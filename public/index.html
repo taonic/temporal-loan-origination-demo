@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Temporal Loan Origination Demo</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    :root {
+      --temporal-black: #141414;
+      --temporal-dark: #1a1a2e;
+      --temporal-card: #232340;
+      --temporal-border: #2e2e50;
+      --temporal-primary: #7c3aed;
+      --temporal-primary-light: #a78bfa;
+      --temporal-green: #34d399;
+      --temporal-red: #f87171;
+      --temporal-yellow: #fbbf24;
+      --temporal-blue: #60a5fa;
+      --temporal-gray: #9ca3af;
+      --temporal-text: #e5e7eb;
+      --temporal-text-dim: #9ca3af;
+      --temporal-bg: #0f0f23;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--temporal-bg);
+      color: var(--temporal-text);
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: var(--temporal-dark);
+      border-bottom: 1px solid var(--temporal-border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header svg { flex-shrink: 0; }
+    .header-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .header-subtitle {
+      font-size: 13px;
+      color: var(--temporal-text-dim);
+      margin-left: auto;
+    }
+
+    /* Layout */
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px 32px;
+    }
+
+    /* Modal overlay */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .modal-content {
+      background: var(--temporal-card);
+      border: 1px solid var(--temporal-border);
+      border-radius: 12px;
+      width: 580px;
+      max-height: 85vh;
+      overflow-y: auto;
+      animation: modalSlide 0.25s ease;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+    }
+    .modal-content::-webkit-scrollbar { width: 6px; }
+    .modal-content::-webkit-scrollbar-thumb { background: var(--temporal-border); border-radius: 3px; }
+    @keyframes modalSlide {
+      from { opacity: 0; transform: translateY(16px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Stats bar */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--temporal-card);
+      border: 1px solid var(--temporal-border);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .stat-card:hover { border-color: var(--temporal-primary); }
+    .stat-card.active { border-color: var(--temporal-primary); background: rgba(124, 58, 237, 0.1); }
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: var(--temporal-text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Search / Filter bar */
+    .filter-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-bar label {
+      font-size: 13px;
+      color: var(--temporal-text-dim);
+    }
+    .filter-bar select, .filter-bar button {
+      background: var(--temporal-card);
+      border: 1px solid var(--temporal-border);
+      color: var(--temporal-text);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .filter-bar select:focus, .filter-bar button:focus {
+      outline: none;
+      border-color: var(--temporal-primary);
+    }
+    .filter-bar button:hover {
+      background: var(--temporal-primary);
+      border-color: var(--temporal-primary);
+    }
+    .btn-clear {
+      background: transparent !important;
+      color: var(--temporal-text-dim) !important;
+    }
+    .btn-clear:hover {
+      color: var(--temporal-text) !important;
+      background: transparent !important;
+    }
+
+    /* Workflow table */
+    .table-wrap {
+      background: var(--temporal-card);
+      border: 1px solid var(--temporal-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    thead th {
+      background: var(--temporal-dark);
+      padding: 12px 16px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--temporal-text-dim);
+      text-align: left;
+      border-bottom: 1px solid var(--temporal-border);
+    }
+    tbody td {
+      padding: 14px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--temporal-border);
+      vertical-align: middle;
+    }
+    tbody tr { cursor: pointer; transition: background 0.15s; }
+    tbody tr:hover { background: rgba(124, 58, 237, 0.08); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr.selected { background: rgba(124, 58, 237, 0.15); }
+
+    /* Status badges */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .badge-started     { background: rgba(96,165,250,0.15); color: var(--temporal-blue); }
+    .badge-pending-fix { background: rgba(251,191,36,0.15); color: var(--temporal-yellow); }
+    .badge-closed      { background: rgba(52,211,153,0.15); color: var(--temporal-green); }
+    .badge-completed   { background: rgba(52,211,153,0.15); color: var(--temporal-green); }
+    .badge-running     { background: rgba(96,165,250,0.15); color: var(--temporal-blue); }
+    .badge-failed      { background: rgba(248,113,113,0.15); color: var(--temporal-red); }
+    .badge-compensating       { background: rgba(251,146,60,0.18); color: #fb923c; }
+    .badge-rolled-back        { background: rgba(156,163,175,0.18); color: var(--temporal-text-dim); }
+    .badge-rollback-pending   { background: rgba(251,146,60,0.18); color: #fb923c; }
+
+    .failed-activity {
+      color: var(--temporal-red);
+      font-weight: 600;
+    }
+
+    /* Pipeline visualization */
+    .pipeline {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .pipeline-step {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      position: relative;
+    }
+    .pipeline-step.done { background: var(--temporal-green); color: #000; }
+    .pipeline-step.fail { background: var(--temporal-red); color: #fff; animation: pulse 1.5s infinite; }
+    .pipeline-step.pending { background: var(--temporal-border); color: var(--temporal-text-dim); }
+    .pipeline-step.compensated { background: #4b5563; color: var(--temporal-text-dim); text-decoration: line-through; }
+    .pipeline-step.compensating { background: #fb923c; color: #000; animation: pulse 1.5s infinite; }
+    .pipeline-step.rollback-fail { background: #7c2d12; color: #fdba74; border: 1.5px solid #fb923c; animation: pulse 1.5s infinite; }
+    .pipeline-arrow { color: var(--temporal-border); font-size: 10px; }
+    .pipeline-step[data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--temporal-black);
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+      margin-bottom: 6px;
+      z-index: 10;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Detail panel */
+    .detail-panel {
+      background: var(--temporal-card);
+      border: 1px solid var(--temporal-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .detail-header {
+      background: var(--temporal-dark);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--temporal-border);
+    }
+    .detail-header h3 { font-size: 15px; font-weight: 600; }
+    .detail-body { padding: 20px; }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .detail-field label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--temporal-text-dim);
+      margin-bottom: 4px;
+    }
+    .detail-field .value {
+      font-size: 14px;
+      color: #fff;
+    }
+
+    /* Fix form */
+    .fix-section {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--temporal-border);
+    }
+    .fix-section h4 {
+      color: var(--temporal-yellow);
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+    .fix-form {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .fix-form .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .fix-form label {
+      font-size: 11px;
+      color: var(--temporal-text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .fix-form select, .fix-form input {
+      background: var(--temporal-bg);
+      border: 1px solid var(--temporal-border);
+      color: var(--temporal-text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      min-width: 180px;
+    }
+    .fix-form select:focus, .fix-form input:focus {
+      outline: none;
+      border-color: var(--temporal-primary);
+    }
+    .btn-fix {
+      background: var(--temporal-primary);
+      color: #fff;
+      border: none;
+      padding: 9px 20px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-fix:hover { background: #6d28d9; }
+    .btn-fix:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Error message */
+    .error-box {
+      background: rgba(248,113,113,0.1);
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 6px;
+      padding: 12px 16px;
+      color: var(--temporal-red);
+      font-size: 13px;
+      margin-top: 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      word-break: break-word;
+    }
+    .error-box.rollback {
+      background: rgba(251,146,60,0.08);
+      border-color: rgba(251,146,60,0.3);
+      color: #fb923c;
+    }
+
+    /* Rollback reason banner */
+    .rollback-banner {
+      background: rgba(251,146,60,0.08);
+      border: 1px solid rgba(251,146,60,0.3);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: #fdba74;
+    }
+    .rollback-banner strong { color: #fb923c; }
+
+    /* Cancel action button */
+    .btn-danger {
+      background: rgba(248,113,113,0.1);
+      color: var(--temporal-red);
+      border: 1px solid rgba(248,113,113,0.3);
+      padding: 9px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: var(--temporal-red);
+      color: #fff;
+      border-color: var(--temporal-red);
+    }
+    .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Compensation history uses fix-history styling with amber accent */
+    .compensation-history h4 { color: #fb923c; }
+    .compensation-history .comp-action { color: #fb923c; }
+
+    /* Success toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--temporal-green);
+      color: #000;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 100;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Activity names */
+    .mono {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 12px;
+    }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--temporal-text-dim);
+    }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty p { font-size: 14px; }
+
+    /* Suggested fix hint */
+    .fix-hint {
+      background: rgba(124,58,237,0.1);
+      border: 1px solid rgba(124,58,237,0.3);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: var(--temporal-primary-light);
+    }
+
+    /* Fix history table */
+    .fix-history {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--temporal-border);
+    }
+    .fix-history h4 {
+      color: var(--temporal-primary-light);
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+    .fix-history table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .fix-history thead th {
+      background: var(--temporal-bg);
+      padding: 8px 10px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--temporal-text-dim);
+      text-align: left;
+      border-bottom: 1px solid var(--temporal-border);
+    }
+    .fix-history tbody td {
+      padding: 8px 10px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--temporal-border);
+      vertical-align: top;
+    }
+    .fix-history tbody tr:last-child td { border-bottom: none; }
+    .fix-old { color: var(--temporal-red); text-decoration: line-through; }
+    .fix-new { color: var(--temporal-green); }
+
+    /* Spinner overlay inside modal */
+    .modal-polling-banner {
+      background: rgba(124, 58, 237, 0.12);
+      border-bottom: 1px solid rgba(124, 58, 237, 0.3);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--temporal-primary-light);
+      animation: fadeIn 0.2s ease;
+    }
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--temporal-border);
+      border-top-color: var(--temporal-primary-light);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Transition for pipeline steps going from fail/pending to done */
+    .pipeline-step {
+      transition: background 0.4s ease, color 0.4s ease;
+    }
+
+    /* Flash green on newly completed step */
+    .pipeline-step.just-done {
+      animation: flashGreen 0.6s ease;
+    }
+    @keyframes flashGreen {
+      0% { background: var(--temporal-primary); transform: scale(1.3); }
+      100% { background: var(--temporal-green); transform: scale(1); }
+    }
+
+    /* New application button */
+    .btn-new {
+      background: var(--temporal-primary);
+      color: #fff;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-new:hover { background: #6d28d9; }
+
+    /* New application form inside modal */
+    .new-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .new-form .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .new-form .field.full { grid-column: 1 / -1; }
+    .new-form label {
+      font-size: 11px;
+      color: var(--temporal-text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .new-form input {
+      background: var(--temporal-bg);
+      border: 1px solid var(--temporal-border);
+      color: var(--temporal-text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .new-form input:focus {
+      outline: none;
+      border-color: var(--temporal-primary);
+    }
+    .new-form-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+    .btn-cancel {
+      background: transparent;
+      color: var(--temporal-text-dim);
+      border: 1px solid var(--temporal-border);
+      padding: 9px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn-cancel:hover { color: var(--temporal-text); border-color: var(--temporal-text-dim); }
+
+    /* Close button */
+    .btn-close {
+      background: none;
+      border: none;
+      color: var(--temporal-text-dim);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .btn-close:hover { color: var(--temporal-text); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <div class="header">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="6" fill="#7c3aed"/>
+        <path d="M8 16h6l2-5 3 10 2-5h3" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="header-title">Temporal Demo - Loan Origination</span>
+    </div>
+
+    <div class="container">
+      <!-- Stats -->
+      <div class="stats-bar">
+        <div class="stat-card" :class="{ active: statFilter === 'all' }" @click="filterByStat('all')">
+          <div class="stat-value">{{ allWorkflows.length }}</div>
+          <div class="stat-label">Total Workflows</div>
+        </div>
+        <div class="stat-card" :class="{ active: statFilter === 'pending' }" @click="filterByStat('pending')">
+          <div class="stat-value" style="color: var(--temporal-yellow)">{{ pendingFixCount }}</div>
+          <div class="stat-label">Pending Fix</div>
+        </div>
+        <div class="stat-card" :class="{ active: statFilter === 'running' }" @click="filterByStat('running')">
+          <div class="stat-value" style="color: var(--temporal-blue)">{{ runningCount }}</div>
+          <div class="stat-label">Running</div>
+        </div>
+        <div class="stat-card" :class="{ active: statFilter === 'completed' }" @click="filterByStat('completed')">
+          <div class="stat-value" style="color: var(--temporal-green)">{{ completedCount }}</div>
+          <div class="stat-label">Completed</div>
+        </div>
+        <div class="stat-card" :class="{ active: statFilter === 'rolledback' }" @click="filterByStat('rolledback')">
+          <div class="stat-value" style="color: #fb923c">{{ rolledBackCount }}</div>
+          <div class="stat-label">Rolled Back</div>
+        </div>
+      </div>
+
+      <!-- Search / Filter -->
+      <div class="filter-bar">
+        <label>Filter by failed activity:</label>
+        <select v-model="filterActivity" @change="loadWorkflows">
+          <option value="">All Workflows</option>
+          <option v-for="a in activityNames" :key="a" :value="a">{{ a }}</option>
+        </select>
+        <label>Status:</label>
+        <select v-model="filterStatus" @change="loadWorkflows">
+          <option value="">All Statuses</option>
+          <option value="PENDING_FIX">PENDING_FIX</option>
+          <option value="STARTED">STARTED</option>
+          <option value="INCOME_VERIFIED">INCOME_VERIFIED</option>
+          <option value="CREDIT_CHECKED">CREDIT_CHECKED</option>
+          <option value="APPRAISAL_ORDERED">APPRAISAL_ORDERED</option>
+          <option value="TITLE_SEARCHED">TITLE_SEARCHED</option>
+          <option value="UNDERWRITTEN">UNDERWRITTEN</option>
+          <option value="CLOSED">CLOSED</option>
+          <option value="COMPENSATING">COMPENSATING</option>
+          <option value="ROLLBACK_PENDING_FIX">ROLLBACK_PENDING_FIX</option>
+          <option value="ROLLED_BACK">ROLLED_BACK</option>
+        </select>
+        <button v-if="filterActivity || filterStatus" class="btn-clear" @click="clearFilters">Clear filters</button>
+        <div style="margin-left: auto; display: flex; gap: 10px;">
+          <button @click="loadWorkflows">Refresh</button>
+          <button class="btn-new" @click="showNewForm = true">+ New Application</button>
+        </div>
+      </div>
+
+      <!-- Workflow table -->
+      <div class="table-wrap">
+        <table v-if="workflows.length">
+          <thead>
+            <tr>
+              <th>Workflow ID</th>
+              <th>Applicant</th>
+              <th>Loan Amount</th>
+              <th>Pipeline</th>
+              <th>Loan Status</th>
+              <th>Failed Activity</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="wf in workflows" :key="wf.workflowId"
+                :class="{ selected: selectedId === wf.workflowId }"
+                @click="selectWorkflow(wf)">
+              <td class="mono">{{ wf.workflowId }}</td>
+              <td>{{ wf.state?.application?.applicantName || '—' }}</td>
+              <td>{{ wf.state ? formatCurrency(wf.state.application.loanAmount) : '—' }}</td>
+              <td>
+                <div class="pipeline" v-if="wf.state">
+                  <span v-for="(step, i) in pipelineSteps" :key="step.id"
+                        class="pipeline-step"
+                        :class="stepClass(wf, step.id)"
+                        :data-tooltip="step.label">
+                    {{ i + 1 }}
+                  </span>
+                </div>
+              </td>
+              <td>
+                <span class="badge" :class="badgeClass(wf.loanStatus || wf.state?.status)">
+                  {{ wf.loanStatus || wf.state?.status || wf.wfStatus }}
+                </span>
+              </td>
+              <td>
+                <span v-if="wf.state?.failedActivity" class="failed-activity mono">
+                  {{ wf.state.failedActivity }}
+                </span>
+                <span v-else-if="wf.failedActivity" class="failed-activity mono">
+                  {{ wf.failedActivity }}
+                </span>
+                <span v-else style="color: var(--temporal-text-dim)">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="empty">
+          <div class="empty-icon">&#8635;</div>
+          <p>No workflows found. Run <code style="color: var(--temporal-primary-light)">npm run workflow</code> to start loan scenarios.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Application Modal -->
+    <div class="modal-overlay" v-if="showNewForm" @click.self="showNewForm = false">
+      <div class="modal-content">
+        <div class="detail-header">
+          <h3>New Loan Application</h3>
+          <button class="btn-close" @click="showNewForm = false">&times;</button>
+        </div>
+        <div class="detail-body">
+          <div class="new-form">
+            <div class="field full">
+              <label>Scenario Preset</label>
+              <select v-model="newScenario" @change="applyScenario" style="background: var(--temporal-bg); border: 1px solid var(--temporal-border); color: var(--temporal-text); padding: 8px 12px; border-radius: 6px; font-size: 13px;">
+                <option value="">Custom (fill manually)</option>
+                <option v-for="s in scenarios" :key="s.name" :value="s.name">{{ s.name }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Applicant Name</label>
+              <input v-model="newApp.applicantName" placeholder="Jane Doe">
+            </div>
+            <div class="field">
+              <label>SSN</label>
+              <input v-model="newApp.ssn" placeholder="123-45-6789">
+            </div>
+            <div class="field">
+              <label>Employer Name</label>
+              <input v-model="newApp.employerName" placeholder="Acme Corp">
+            </div>
+            <div class="field">
+              <label>Annual Income</label>
+              <input v-model="newApp.annualIncome" type="number" placeholder="100000">
+            </div>
+            <div class="field full">
+              <label>Property Address</label>
+              <input v-model="newApp.propertyAddress" placeholder="123 Main St, Anytown">
+            </div>
+            <div class="field">
+              <label>Property ID</label>
+              <input v-model="newApp.propertyId" placeholder="PROP-100">
+            </div>
+            <div class="field">
+              <label>Loan Amount</label>
+              <input v-model="newApp.loanAmount" type="number" placeholder="350000">
+            </div>
+            <div class="field">
+              <label>Down Payment</label>
+              <input v-model="newApp.downPayment" type="number" placeholder="70000">
+            </div>
+            <div class="new-form-actions">
+              <button class="btn-cancel" @click="showNewForm = false">Cancel</button>
+              <button class="btn-new" @click="submitNewApp" :disabled="!newApp.applicantName">Submit Application</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal dialog -->
+    <div class="modal-overlay" v-if="selected" @click.self="closeDetail">
+      <div class="modal-content">
+        <div class="detail-header">
+          <h3>{{ selected.state?.application?.applicantName || selected.workflowId }}</h3>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge" :class="badgeClass(selected.state?.status)">
+              {{ selected.state?.status }}
+            </span>
+            <button class="btn-close" @click="closeDetail" title="Close">&times;</button>
+          </div>
+        </div>
+        <div class="modal-polling-banner" v-if="modalPolling">
+          <span class="spinner"></span>
+          Waiting for workflow to resume...
+        </div>
+        <div class="detail-body">
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--temporal-text-dim);">Workflow ID</label>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+              <span class="mono" style="font-size: 13px; color: #fff;">{{ selected.workflowId }}</span>
+              <a :href="`http://localhost:8233/namespaces/default/workflows/${selected.workflowId}`"
+                 target="_blank" rel="noopener"
+                 style="font-size: 11px; color: var(--temporal-primary-light); text-decoration: none;"
+                 title="Open in Temporal UI">
+                Open in Temporal UI &#8599;
+              </a>
+            </div>
+          </div>
+
+          <!-- Pipeline in detail -->
+          <div style="margin-bottom: 16px;" v-if="selected.state">
+            <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--temporal-text-dim);">Pipeline</label>
+            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+              <div v-for="(step, i) in pipelineSteps" :key="step.id"
+                   style="display: flex; align-items: center; gap: 8px;">
+                <span class="pipeline-step" :class="stepClass(selected, step.id)"
+                      style="width: 22px; height: 22px; font-size: 11px;">
+                  {{ i + 1 }}
+                </span>
+                <span style="font-size: 13px;" :style="stepLabelStyle(selected, step.id)">
+                  {{ step.label }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-grid" v-if="selected.state">
+            <div class="detail-field">
+              <label>SSN</label>
+              <div class="value mono">{{ selected.state.application.ssn }}</div>
+            </div>
+            <div class="detail-field">
+              <label>Employer</label>
+              <div class="value">{{ selected.state.application.employerName }}</div>
+            </div>
+            <div class="detail-field">
+              <label>Annual Income</label>
+              <div class="value">{{ formatCurrency(selected.state.application.annualIncome) }}</div>
+            </div>
+            <div class="detail-field">
+              <label>Property</label>
+              <div class="value">{{ selected.state.application.propertyAddress }}</div>
+            </div>
+            <div class="detail-field">
+              <label>Property ID</label>
+              <div class="value mono">{{ selected.state.application.propertyId }}</div>
+            </div>
+            <div class="detail-field">
+              <label>Loan</label>
+              <div class="value">{{ formatCurrency(selected.state.application.loanAmount) }}</div>
+            </div>
+            <div class="detail-field">
+              <label>Down Payment</label>
+              <div class="value">{{ formatCurrency(selected.state.application.downPayment) }}</div>
+            </div>
+          </div>
+
+          <!-- Error display (red for forward, amber for rollback) -->
+          <div v-if="selected.state?.failureMessage"
+               :class="['error-box', selected.state?.status === 'ROLLBACK_PENDING_FIX' ? 'rollback' : '']">
+            {{ selected.state.failureMessage }}
+          </div>
+
+          <!-- Rollback reason banner (shows when saga unwind was triggered) -->
+          <div v-if="selected.state?.cancelReason && isRollbackState(selected.state.status)"
+               class="rollback-banner">
+            <div><strong>Rollback reason:</strong> {{ selected.state.cancelReason }}</div>
+            <div v-if="selected.state?.notificationMessage" style="margin-top: 6px;">
+              <strong>Applicant notified:</strong> {{ selected.state.notificationMessage }}
+            </div>
+          </div>
+
+          <!-- Fix history -->
+          <div class="fix-history" v-if="selected.state?.fixHistory?.length">
+            <h4>Fix History</h4>
+            <table>
+              <thead>
+                <tr>
+                  <th>Activity</th>
+                  <th>Field</th>
+                  <th>Old</th>
+                  <th>New</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(fix, i) in selected.state.fixHistory" :key="i">
+                  <td class="mono">{{ fix.activity }}</td>
+                  <td class="mono">{{ fix.field }}</td>
+                  <td class="fix-old mono">{{ fix.oldValue }}</td>
+                  <td class="fix-new mono">{{ fix.newValue }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Compensation history (saga unwind audit trail) -->
+          <div class="fix-history compensation-history" v-if="selected.state?.compensationHistory?.length">
+            <h4>Compensation History</h4>
+            <table>
+              <thead>
+                <tr>
+                  <th>Forward Activity</th>
+                  <th>Compensation</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(c, i) in selected.state.compensationHistory" :key="i">
+                  <td class="mono">{{ c.forwardActivity }}</td>
+                  <td class="mono comp-action">{{ c.compensationActivity }}</td>
+                  <td>{{ c.result }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Cancel-application action (triggers saga rollback) -->
+          <div class="fix-section" v-if="showCancelButton && !cancelFormOpen">
+            <h4 style="color: var(--temporal-red);">Withdraw Application</h4>
+            <div style="font-size: 12px; color: var(--temporal-text-dim); margin-bottom: 10px;">
+              Runs compensation activities in reverse order to undo side effects
+              ({{ compensatableCount }} step{{ compensatableCount === 1 ? '' : 's' }} with effects so far).
+            </div>
+            <button class="btn-danger" @click="cancelFormOpen = true">
+              Cancel Application (Trigger Rollback)
+            </button>
+          </div>
+          <div class="fix-section" v-if="cancelFormOpen">
+            <h4 style="color: var(--temporal-red);">Cancel and Roll Back</h4>
+            <div class="fix-form">
+              <div class="field" style="flex: 1; min-width: 260px;">
+                <label>Reason (required)</label>
+                <input v-model="cancelInput" placeholder="e.g. Applicant withdrew offer"
+                       @keyup.enter="sendCancel">
+              </div>
+              <button class="btn-danger" @click="sendCancel" :disabled="!cancelInput">
+                Send Cancellation
+              </button>
+              <button class="btn-cancel" @click="cancelFormOpen = false; cancelInput = ''">
+                Dismiss
+              </button>
+            </div>
+          </div>
+
+          <!-- Forward fix section -->
+          <div class="fix-section" v-if="selected.state?.status === 'PENDING_FIX'">
+            <h4>Send Fix via Signal</h4>
+            <div v-if="suggestedFix" class="fix-hint">
+              <strong>{{ suggestedFix.key }}</strong>: current value is
+              <code style="color: var(--temporal-red)">{{ selected.state.application[suggestedFix.key] }}</code>
+              <span v-if="suggestedFix.hint"> — try <code style="color: var(--temporal-green)">{{ suggestedFix.hint }}</code></span>
+            </div>
+            <div class="fix-form">
+              <div class="field">
+                <label>Field to patch</label>
+                <select v-model="fixKey">
+                  <option value="ssn">ssn</option>
+                  <option value="employerName">employerName</option>
+                  <option value="annualIncome">annualIncome</option>
+                  <option value="propertyAddress">propertyAddress</option>
+                  <option value="propertyId">propertyId</option>
+                  <option value="loanAmount">loanAmount</option>
+                  <option value="downPayment">downPayment</option>
+                </select>
+              </div>
+              <div class="field" v-if="fixKey && selected.state">
+                <label>Current Value</label>
+                <div class="mono" style="padding: 8px 0; color: var(--temporal-red);">{{ selected.state.application[fixKey] }}</div>
+              </div>
+              <div class="field">
+                <label>New Value</label>
+                <input v-model="fixValue" placeholder="Enter corrected value"
+                       @keyup.enter="sendFix">
+              </div>
+              <button class="btn-fix" @click="sendFix" :disabled="!fixKey || !fixValue">
+                Patch and Retry
+              </button>
+            </div>
+          </div>
+
+          <!-- Rollback fix section (compensation stuck — patch and/or retry) -->
+          <div class="fix-section" v-if="selected.state?.status === 'ROLLBACK_PENDING_FIX'">
+            <h4 style="color: #fb923c;">Retry Compensation</h4>
+            <div v-if="suggestedFix" class="fix-hint" style="background: rgba(251,146,60,0.08); border-color: rgba(251,146,60,0.3); color: #fdba74;">
+              Compensation <strong>{{ stuckCompensationName }}</strong> is blocked.
+              Patch <strong>{{ suggestedFix.key }}</strong> (currently
+              <code style="color: var(--temporal-red)">{{ selected.state.application[suggestedFix.key] }}</code>)
+              <span v-if="suggestedFix.hint">— try <code style="color: var(--temporal-green)">{{ suggestedFix.hint }}</code></span>,
+              or just retry if the vendor is back.
+            </div>
+            <div class="fix-form">
+              <div class="field">
+                <label>Field to patch (optional)</label>
+                <select v-model="fixKey">
+                  <option value="">(none — just retry)</option>
+                  <option value="propertyAddress">propertyAddress</option>
+                  <option value="propertyId">propertyId</option>
+                </select>
+              </div>
+              <div class="field" v-if="fixKey && selected.state">
+                <label>Current Value</label>
+                <div class="mono" style="padding: 8px 0; color: var(--temporal-red);">{{ selected.state.application[fixKey] }}</div>
+              </div>
+              <div class="field" v-if="fixKey">
+                <label>New Value</label>
+                <input v-model="fixValue" placeholder="Enter corrected value"
+                       @keyup.enter="sendFix">
+              </div>
+              <button class="btn-fix" @click="sendFix" :disabled="fixKey && !fixValue"
+                      style="background: #fb923c;">
+                {{ fixKey ? 'Patch and Retry' : 'Retry Compensation' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" v-if="toast">{{ toast }}</div>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+
+    createApp({
+      data() {
+        return {
+          allWorkflows: [],
+          selectedId: null,
+          selected: null,
+          filterActivity: '',
+          filterStatus: '',
+          fixKey: '',
+          fixValue: '',
+          toast: '',
+          pollInterval: null,
+          showNewForm: false,
+          newScenario: '',
+          newApp: { applicantName: '', ssn: '', employerName: '', annualIncome: '', propertyAddress: '', propertyId: '', loanAmount: '', downPayment: '' },
+          scenarios: [
+            { name: 'Clean — all pass', applicantName: 'Alice Johnson', ssn: '123-45-6789', employerName: 'Acme Corp', annualIncome: 120000, propertyAddress: '123 Oak St, Springfield', propertyId: 'PROP-001', loanAmount: 350000, downPayment: 70000 },
+            { name: 'Bad SSN — credit check fails', applicantName: 'Bob Smith', ssn: '000-00-0000', employerName: 'TechCo', annualIncome: 95000, propertyAddress: '456 Elm Ave, Shelbyville', propertyId: 'PROP-002', loanAmount: 280000, downPayment: 56000 },
+            { name: 'Invalid address — appraisal fails', applicantName: 'Carol Davis', ssn: '987-65-4321', employerName: 'HealthPlus', annualIncome: 105000, propertyAddress: 'INVALID_ADDRESS', propertyId: 'PROP-003', loanAmount: 320000, downPayment: 64000 },
+            { name: 'Missing property ID — title search fails', applicantName: 'Dan Miller', ssn: '555-12-3456', employerName: 'EduStar', annualIncome: 88000, propertyAddress: '789 Pine Rd, Capital City', propertyId: 'MISSING', loanAmount: 250000, downPayment: 50000 },
+            { name: 'High DTI — underwriting fails', applicantName: 'Eve Wilson', ssn: '111-22-3333', employerName: 'StartupXYZ', annualIncome: 45000, propertyAddress: '321 Birch Ln, Ogdenville', propertyId: 'PROP-005', loanAmount: 500000, downPayment: 10000 },
+            { name: 'Unknown employer — income fails', applicantName: 'Frank Brown', ssn: '444-55-6666', employerName: 'UNKNOWN_EMPLOYER', annualIncome: 75000, propertyAddress: '654 Maple Dr, North Haverbrook', propertyId: 'PROP-006', loanAmount: 220000, downPayment: 44000 },
+            { name: 'Multi — employer + address + property ID', applicantName: 'Grace Lee', ssn: '777-88-9999', employerName: 'UNKNOWN_EMPLOYER', annualIncome: 92000, propertyAddress: 'INVALID_ADDRESS', propertyId: 'MISSING', loanAmount: 300000, downPayment: 60000 },
+            { name: 'Multi — bad SSN + high DTI', applicantName: 'Henry Park', ssn: '000-00-0000', employerName: 'MegaCorp', annualIncome: 50000, propertyAddress: '55 River Rd, Brockway', propertyId: 'PROP-008', loanAmount: 480000, downPayment: 5000 },
+            { name: 'Multi — employer + SSN + address + DTI', applicantName: 'Irene Tanaka', ssn: '000-00-0000', employerName: 'UNKNOWN_EMPLOYER', annualIncome: 40000, propertyAddress: 'INVALID_ADDRESS', propertyId: 'PROP-009', loanAmount: 600000, downPayment: 5000 },
+          ],
+          statFilter: 'all',
+          modalPolling: false,
+          modalPollTimer: null,
+          prevCompletedCount: 0,
+          prevStatus: '',
+          cancelFormOpen: false,
+          cancelInput: '',
+          activityNames: [
+            'verifyIncome',
+            'runCreditCheck',
+            'orderAppraisal',
+            'performTitleSearch',
+            'underwrite',
+            'closeLoan'
+          ],
+          pipelineSteps: [
+            { id: 'verifyIncome', label: 'Verify Income' },
+            { id: 'runCreditCheck', label: 'Credit Check' },
+            { id: 'orderAppraisal', label: 'Appraisal' },
+            { id: 'performTitleSearch', label: 'Title Search' },
+            { id: 'underwrite', label: 'Underwriting' },
+            { id: 'closeLoan', label: 'Close Loan' },
+          ],
+          // Steps with external side effects — these register a compensation.
+          // verifyIncome is read-only, so it has no compensation to run.
+          stepsWithCompensation: [
+            'runCreditCheck',
+            'orderAppraisal',
+            'performTitleSearch',
+            'underwrite',
+            'closeLoan',
+          ]
+        };
+      },
+      computed: {
+        pendingFixCount() {
+          return this.allWorkflows.filter(w => {
+            const ls = w.loanStatus || w.state?.status;
+            return ls === 'PENDING_FIX' || ls === 'ROLLBACK_PENDING_FIX';
+          }).length;
+        },
+        runningCount() {
+          return this.allWorkflows.filter(w => {
+            const ls = w.loanStatus || w.state?.status;
+            return w.wfStatus === 'RUNNING' &&
+                   ls !== 'PENDING_FIX' && ls !== 'ROLLBACK_PENDING_FIX';
+          }).length;
+        },
+        completedCount() {
+          return this.allWorkflows.filter(w => {
+            const ls = w.loanStatus || w.state?.status;
+            return ls === 'CLOSED';
+          }).length;
+        },
+        rolledBackCount() {
+          return this.allWorkflows.filter(w => {
+            const ls = w.loanStatus || w.state?.status;
+            return ls === 'ROLLED_BACK';
+          }).length;
+        },
+        workflows() {
+          if (this.statFilter === 'all') return this.allWorkflows;
+          return this.allWorkflows.filter(w => {
+            const ls = w.loanStatus || w.state?.status;
+            if (this.statFilter === 'pending') return ls === 'PENDING_FIX' || ls === 'ROLLBACK_PENDING_FIX';
+            if (this.statFilter === 'running') return w.wfStatus === 'RUNNING' && ls !== 'PENDING_FIX' && ls !== 'ROLLBACK_PENDING_FIX';
+            if (this.statFilter === 'completed') return ls === 'CLOSED';
+            if (this.statFilter === 'rolledback') return ls === 'ROLLED_BACK';
+            return true;
+          });
+        },
+        suggestedFix() {
+          if (!this.selected?.state?.failedActivity) return null;
+          const fa = this.selected.state.failedActivity;
+          const status = this.selected.state.status;
+          // Which compensations need a field patch to proceed
+          const rollbackFixes = {
+            orderAppraisal: { key: 'propertyAddress', hint: '100 Main St, Anytown' },
+            performTitleSearch: { key: 'propertyId', hint: 'PROP-VALID' },
+          };
+          const forwardFixes = {
+            verifyIncome: { key: 'employerName', hint: 'Acme Corp' },
+            runCreditCheck: { key: 'ssn', hint: '123-45-6789' },
+            orderAppraisal: { key: 'propertyAddress', hint: '100 Main St, Anytown' },
+            performTitleSearch: { key: 'propertyId', hint: 'PROP-100' },
+            underwrite: { key: 'downPayment', hint: '100000' },
+          };
+          const fix = status === 'ROLLBACK_PENDING_FIX' ? rollbackFixes[fa] : forwardFixes[fa];
+          if (fix) this.fixKey = fix.key;
+          return fix || null;
+        },
+        showCancelButton() {
+          if (this.selected?.wfStatus !== 'RUNNING') return false;
+          const s = this.selected?.state?.status;
+          return !!s && !['CLOSED', 'ROLLED_BACK', 'COMPENSATING', 'ROLLBACK_PENDING_FIX', 'FAILED'].includes(s);
+        },
+        compensatableCount() {
+          const completed = this.selected?.state?.completedActivities || [];
+          // verifyIncome has no side effects
+          return completed.filter(a => a !== 'verifyIncome').length;
+        },
+        stuckCompensationName() {
+          const map = {
+            runCreditCheck: 'withdrawCreditInquiry',
+            orderAppraisal: 'cancelAppraisal',
+            performTitleSearch: 'releaseTitleHold',
+            underwrite: 'releaseUnderwritingReservation',
+            closeLoan: 'reverseLoanClosure',
+          };
+          const fa = this.selected?.state?.failedActivity;
+          return map[fa] || 'compensation';
+        },
+      },
+      methods: {
+        async loadWorkflows() {
+          try {
+            let url = '/api/workflows';
+            const params = new URLSearchParams();
+            if (this.filterActivity) params.set('failedActivity', this.filterActivity);
+            if (this.filterStatus) params.set('status', this.filterStatus);
+            if (params.toString()) url = `/api/workflows/search?${params}`;
+
+            const res = await fetch(url);
+            const data = await res.json();
+            this.allWorkflows = data.workflows || [];
+
+            // Re-select if still present
+            if (this.selectedId) {
+              const match = this.workflows.find(w => w.workflowId === this.selectedId);
+              if (match) this.selected = match;
+            }
+          } catch (e) {
+            console.error('Failed to load workflows', e);
+          }
+        },
+        selectWorkflow(wf) {
+          this.selectedId = wf.workflowId;
+          this.selected = wf;
+          this.fixKey = '';
+          this.fixValue = '';
+          this.cancelFormOpen = false;
+          this.cancelInput = '';
+        },
+        closeDetail() {
+          this.stopModalPoll();
+          this.selectedId = null;
+          this.selected = null;
+          this.cancelFormOpen = false;
+          this.cancelInput = '';
+        },
+        async sendFix() {
+          // During ROLLBACK_PENDING_FIX, key/value may be empty (pure retry)
+          const rollbackRetry = this.selected?.state?.status === 'ROLLBACK_PENDING_FIX' && !this.fixKey;
+          if (!rollbackRetry && (!this.fixKey || !this.fixValue) && this.selected?.state?.status !== 'ROLLBACK_PENDING_FIX') return;
+          if (!this.selectedId) return;
+          try {
+            const body = rollbackRetry
+              ? { key: '', value: '' }
+              : { key: this.fixKey, value: this.fixValue };
+            const res = await fetch(`/api/workflows/${this.selectedId}/fix`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            this.showToast(data.message || 'Signal sent');
+            this.fixValue = '';
+            this.prevCompletedCount = this.selected?.state?.completedActivities?.length || 0;
+            this.prevStatus = this.selected?.state?.status || '';
+            this.startModalPoll();
+          } catch (e) {
+            this.showToast('Error sending signal: ' + e.message);
+          }
+        },
+        async sendCancel() {
+          if (!this.cancelInput || !this.selectedId) return;
+          try {
+            const res = await fetch(`/api/workflows/${this.selectedId}/cancel`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason: this.cancelInput }),
+            });
+            const data = await res.json();
+            this.showToast(data.message || 'Cancellation sent');
+            this.cancelFormOpen = false;
+            this.cancelInput = '';
+            this.prevCompletedCount = this.selected?.state?.completedActivities?.length || 0;
+            this.prevStatus = this.selected?.state?.status || '';
+            this.startModalPoll();
+          } catch (e) {
+            this.showToast('Error cancelling: ' + e.message);
+          }
+        },
+        startModalPoll() {
+          this.stopModalPoll();
+          this.modalPolling = true;
+          this.modalPollTimer = setInterval(() => this.pollModalState(), 1000);
+        },
+        stopModalPoll() {
+          this.modalPolling = false;
+          if (this.modalPollTimer) {
+            clearInterval(this.modalPollTimer);
+            this.modalPollTimer = null;
+          }
+        },
+        async pollModalState() {
+          if (!this.selectedId) { this.stopModalPoll(); return; }
+          try {
+            const res = await fetch(`/api/workflows/${this.selectedId}`);
+            const data = await res.json();
+            if (data.state && typeof data.state === 'object') {
+              const newCount = data.state.completedActivities?.length || 0;
+              this.selected = {
+                ...this.selected,
+                wfStatus: data.wfStatus,
+                state: data.state,
+              };
+              // Stop conditions:
+              //  - Reached terminal state (CLOSED, ROLLED_BACK)
+              //  - Paused for human (PENDING_FIX, ROLLBACK_PENDING_FIX) AND has made progress since last fix
+              const terminal = ['CLOSED', 'ROLLED_BACK'].includes(data.state.status);
+              const paused = ['PENDING_FIX', 'ROLLBACK_PENDING_FIX'].includes(data.state.status);
+              const progressed = newCount > this.prevCompletedCount ||
+                                 data.state.status !== this.prevStatus;
+              if (terminal || (paused && progressed)) {
+                this.stopModalPoll();
+                this.loadWorkflows();
+                if (data.state.status === 'CLOSED') this.showToast('Loan closed successfully!');
+                if (data.state.status === 'ROLLED_BACK') this.showToast('Application rolled back');
+              }
+            }
+          } catch {
+            // query may time out if worker is busy
+          }
+        },
+        applyScenario() {
+          const s = this.scenarios.find(s => s.name === this.newScenario);
+          if (!s) return;
+          this.newApp = {
+            applicantName: s.applicantName,
+            ssn: s.ssn,
+            employerName: s.employerName,
+            annualIncome: s.annualIncome,
+            propertyAddress: s.propertyAddress,
+            propertyId: s.propertyId,
+            loanAmount: s.loanAmount,
+            downPayment: s.downPayment,
+          };
+        },
+        async submitNewApp() {
+          try {
+            const body = {
+              applicationId: '',
+              applicantName: this.newApp.applicantName,
+              ssn: this.newApp.ssn,
+              employerName: this.newApp.employerName,
+              annualIncome: Number(this.newApp.annualIncome) || 0,
+              propertyAddress: this.newApp.propertyAddress,
+              propertyId: this.newApp.propertyId,
+              loanAmount: Number(this.newApp.loanAmount) || 0,
+              downPayment: Number(this.newApp.downPayment) || 0,
+            };
+            const res = await fetch('/api/workflows', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            this.showToast(`Started ${data.workflowId}`);
+            this.showNewForm = false;
+            this.newScenario = '';
+            this.newApp = { applicantName: '', ssn: '', employerName: '', annualIncome: '', propertyAddress: '', propertyId: '', loanAmount: '', downPayment: '' };
+            setTimeout(() => this.loadWorkflows(), 1000);
+          } catch (e) {
+            this.showToast('Error: ' + e.message);
+          }
+        },
+        filterByStat(filter) {
+          this.statFilter = this.statFilter === filter ? 'all' : filter;
+        },
+        clearFilters() {
+          this.filterActivity = '';
+          this.filterStatus = '';
+          this.statFilter = 'all';
+          this.loadWorkflows();
+        },
+        stepClass(wf, stepId) {
+          if (!wf.state) return 'pending';
+          const s = wf.state;
+          const compensated = s.compensatedActivities || [];
+          const completed = s.completedActivities || [];
+          if (compensated.includes(stepId)) return 'compensated';
+          const rollbackPhase = this.isRollbackState(s.status);
+          if (rollbackPhase && s.failedActivity === stepId && completed.includes(stepId)) {
+            return s.status === 'ROLLBACK_PENDING_FIX' ? 'rollback-fail' : 'compensating';
+          }
+          // Read-only steps (no compensation registered) render as compensated during rollback —
+          // there is nothing to undo, but the whole pipeline is semantically rolled back.
+          if (rollbackPhase && completed.includes(stepId) && !this.stepsWithCompensation.includes(stepId)) {
+            return 'compensated';
+          }
+          if (completed.includes(stepId)) return 'done';
+          if (s.failedActivity === stepId && s.status === 'PENDING_FIX') return 'fail';
+          return 'pending';
+        },
+        badgeClass(status) {
+          if (!status) return '';
+          const s = status.toUpperCase().replace(/ /g, '_');
+          if (s === 'PENDING_FIX') return 'badge-pending-fix';
+          if (s === 'ROLLBACK_PENDING_FIX') return 'badge-rollback-pending';
+          if (s === 'COMPENSATING') return 'badge-compensating';
+          if (s === 'ROLLED_BACK') return 'badge-rolled-back';
+          if (s === 'CLOSED') return 'badge-closed';
+          if (s === 'COMPLETED') return 'badge-completed';
+          if (s === 'RUNNING') return 'badge-running';
+          if (s === 'FAILED') return 'badge-failed';
+          return 'badge-started';
+        },
+        isRollbackState(status) {
+          return ['COMPENSATING', 'ROLLBACK_PENDING_FIX', 'ROLLED_BACK'].includes(status);
+        },
+        stepLabelStyle(wf, stepId) {
+          const cls = this.stepClass(wf, stepId);
+          const colors = {
+            fail: 'var(--temporal-red)',
+            done: 'var(--temporal-green)',
+            compensated: 'var(--temporal-text-dim)',
+            compensating: '#fb923c',
+            'rollback-fail': '#fdba74',
+            pending: 'var(--temporal-text-dim)',
+          };
+          return {
+            color: colors[cls] || 'var(--temporal-text-dim)',
+            textDecoration: cls === 'compensated' ? 'line-through' : 'none',
+          };
+        },
+        formatCurrency(n) {
+          if (n == null) return '—';
+          return '$' + Number(n).toLocaleString();
+        },
+        showToast(msg) {
+          this.toast = msg;
+          setTimeout(() => { this.toast = ''; }, 3000);
+        },
+      },
+      mounted() {
+        this.loadWorkflows();
+        this.pollInterval = setInterval(() => this.loadWorkflows(), 3000);
+        window.addEventListener('keydown', this._onKeydown = (e) => {
+          if (e.key === 'Escape') {
+            if (this.showNewForm) this.showNewForm = false;
+            else if (this.selected) this.closeDetail();
+          }
+        });
+      },
+      beforeUnmount() {
+        if (this.pollInterval) clearInterval(this.pollInterval);
+        if (this._onKeydown) window.removeEventListener('keydown', this._onKeydown);
+      },
+    }).mount('#app');
+  </script>
+</body>
+</html>
