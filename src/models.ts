@@ -18,6 +18,8 @@ export type LoanStatus =
   | 'TITLE_SEARCHED'
   | 'UNDERWRITTEN'
   | 'CLOSED'
+  | 'PENDING_APPROVAL'
+  | 'APPROVED'
   | 'PENDING_FIX'
   | 'COMPENSATING'
   | 'ROLLBACK_PENDING_FIX'
@@ -30,7 +32,8 @@ export type ActivityName =
   | 'orderAppraisal'
   | 'performTitleSearch'
   | 'underwrite'
-  | 'closeLoan';
+  | 'closeLoan'
+  | 'humanApproval';
 
 export interface FixEntry {
   activity: string;

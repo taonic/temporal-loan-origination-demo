@@ -41,6 +41,7 @@ const {
 
 export const retrySignal = defineSignal<[RetryUpdate]>('retry');
 export const cancelSignal = defineSignal<[CancelRequest]>('cancelApplication');
+export const approvalSignal = defineSignal<[]>('approveApplication');
 export const getStateQuery = defineQuery<LoanState>('getState');
 
 interface Compensation {
@@ -56,6 +57,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
   let failureMessage = '';
   let retryRequested = false;
   let cancelRequested = false;
+  let approvalRequested = false;
   let cancelReason = '';
   let notificationMessage = '';
   const completedActivities: string[] = [];
@@ -110,6 +112,11 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
       log.info('Retry requested without patch');
     }
     retryRequested = true;
+  });
+
+  setHandler(approvalSignal, () => {
+    approvalRequested = true;
+    log.info('Human approval received');
   });
 
   setHandler(cancelSignal, (req: CancelRequest) => {
@@ -235,6 +242,13 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     );
     completedActivities.push('closeLoan');
     updateStatus('CLOSED');
+
+    // Final step: human-in-the-loop approval. Pause and wait for an operator
+    // to hit the approval link before the workflow returns.
+    updateStatus('PENDING_APPROVAL');
+    await condition(() => approvalRequested);
+    completedActivities.push('humanApproval');
+    updateStatus('APPROVED');
   } catch (err: any) {
     // Forward pipeline aborted — unwind the saga in LIFO order
     const trigger = cancelReason || err.message || String(err);

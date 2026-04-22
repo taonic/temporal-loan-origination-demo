@@ -1,7 +1,7 @@
 import express from 'express';
 import { Connection, Client } from '@temporalio/client';
 import { defineSearchAttributeKey } from '@temporalio/common';
-import { homeLoanWorkflow, retrySignal, cancelSignal, getStateQuery } from './workflows';
+import { homeLoanWorkflow, retrySignal, cancelSignal, approvalSignal, getStateQuery } from './workflows';
 import type { LoanApplication, RetryUpdate, LoanState, CancelRequest } from './models';
 
 const LoanStatusKey = defineSearchAttributeKey('LoanStatus', 'KEYWORD');
@@ -135,6 +135,17 @@ async function run() {
       await handle.signal(retrySignal, { key, value });
       const msg = key ? `Fix sent: ${key} = ${value}` : 'Retry signal sent';
       res.json({ success: true, message: msg });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // Signal human approval — releases the workflow's final pause and completes it
+  app.post('/api/workflows/:workflowId/approve', async (req, res) => {
+    try {
+      const handle = client.workflow.getHandle(req.params.workflowId);
+      await handle.signal(approvalSignal);
+      res.json({ success: true, message: 'Application approved' });
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }

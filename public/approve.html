@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Approve Loan Application</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    :root {
+      --temporal-dark: #1a1a2e;
+      --temporal-card: #232340;
+      --temporal-border: #2e2e50;
+      --temporal-cyan: #06b6d4;
+      --temporal-green: #34d399;
+      --temporal-red: #f87171;
+      --temporal-text: #e5e7eb;
+      --temporal-text-dim: #9ca3af;
+      --temporal-bg: #0f0f23;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--temporal-bg);
+      color: var(--temporal-text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: var(--temporal-card);
+      border: 1px solid var(--temporal-border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 520px;
+      overflow: hidden;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+    }
+    .card-header {
+      background: var(--temporal-dark);
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--temporal-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-header svg { flex-shrink: 0; }
+    .card-header h1 { font-size: 16px; font-weight: 600; }
+    .card-body { padding: 24px; }
+    .wf-id {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--temporal-cyan);
+      margin-bottom: 16px;
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .detail-grid .field label {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--temporal-text-dim);
+      margin-bottom: 4px;
+    }
+    .detail-grid .field .value {
+      font-size: 14px;
+      color: #fff;
+    }
+    .detail-grid .field.full { grid-column: 1 / -1; }
+    .btn-approve {
+      background: var(--temporal-cyan);
+      color: #000;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: filter 0.2s;
+    }
+    .btn-approve:hover:not(:disabled) { filter: brightness(1.1); }
+    .btn-approve:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status-note {
+      text-align: center;
+      padding: 32px 16px;
+    }
+    .status-note .icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+    .status-note.success .icon { color: var(--temporal-green); }
+    .status-note.error .icon { color: var(--temporal-red); }
+    .status-note p { font-size: 14px; color: var(--temporal-text-dim); }
+    .error-box {
+      background: rgba(248,113,113,0.1);
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 6px;
+      padding: 12px 14px;
+      color: var(--temporal-red);
+      font-size: 13px;
+      margin-top: 12px;
+    }
+    .loading {
+      text-align: center;
+      padding: 32px;
+      color: var(--temporal-text-dim);
+      font-size: 14px;
+    }
+    .not-pending {
+      background: rgba(251,191,36,0.1);
+      border: 1px solid rgba(251,191,36,0.3);
+      border-radius: 6px;
+      padding: 12px 14px;
+      color: #fbbf24;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="card">
+      <div class="card-header">
+        <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+          <rect width="32" height="32" rx="6" fill="#06b6d4"/>
+          <path d="M9 16l5 5 9-10" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1>Loan Application Approval</h1>
+      </div>
+      <div class="card-body">
+        <div v-if="loading" class="loading">Loading application...</div>
+
+        <div v-else-if="loadError" class="status-note error">
+          <div class="icon">&#9888;</div>
+          <p>{{ loadError }}</p>
+        </div>
+
+        <div v-else-if="approved" class="status-note success">
+          <div class="icon">&#10003;</div>
+          <p><strong>Approved.</strong> The application is complete. You can close this tab.</p>
+        </div>
+
+        <div v-else-if="state && state.status !== 'PENDING_APPROVAL'" class="not-pending">
+          This application is in state <strong>{{ state.status }}</strong>. Approval is not awaited.
+        </div>
+
+        <template v-else-if="state">
+          <div class="wf-id">{{ workflowId }}</div>
+          <div class="detail-grid">
+            <div class="field">
+              <label>Applicant</label>
+              <div class="value">{{ state.application.applicantName }}</div>
+            </div>
+            <div class="field">
+              <label>Employer</label>
+              <div class="value">{{ state.application.employerName }}</div>
+            </div>
+            <div class="field">
+              <label>Annual Income</label>
+              <div class="value">{{ currency(state.application.annualIncome) }}</div>
+            </div>
+            <div class="field">
+              <label>Loan Amount</label>
+              <div class="value">{{ currency(state.application.loanAmount) }}</div>
+            </div>
+            <div class="field">
+              <label>Down Payment</label>
+              <div class="value">{{ currency(state.application.downPayment) }}</div>
+            </div>
+            <div class="field">
+              <label>Property ID</label>
+              <div class="value">{{ state.application.propertyId }}</div>
+            </div>
+            <div class="field full">
+              <label>Property Address</label>
+              <div class="value">{{ state.application.propertyAddress }}</div>
+            </div>
+          </div>
+          <button class="btn-approve" @click="approve" :disabled="submitting">
+            {{ submitting ? 'Approving...' : 'Approve Application' }}
+          </button>
+          <div v-if="error" class="error-box">{{ error }}</div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+    createApp({
+      data() {
+        return {
+          workflowId: new URLSearchParams(window.location.search).get('id') || '',
+          state: null,
+          loading: true,
+          loadError: '',
+          approved: false,
+          submitting: false,
+          error: '',
+        };
+      },
+      methods: {
+        async load() {
+          if (!this.workflowId) {
+            this.loadError = 'Missing workflow ID — open this page from the main dashboard.';
+            this.loading = false;
+            return;
+          }
+          try {
+            const res = await fetch(`/api/workflows/${this.workflowId}`);
+            const data = await res.json();
+            if (data.error) {
+              this.loadError = data.error;
+            } else {
+              this.state = data.state;
+            }
+          } catch (e) {
+            this.loadError = e.message;
+          } finally {
+            this.loading = false;
+          }
+        },
+        async approve() {
+          this.submitting = true;
+          this.error = '';
+          try {
+            const res = await fetch(`/api/workflows/${this.workflowId}/approve`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}',
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.approved = true;
+            } else {
+              this.error = data.error || 'Approval failed';
+            }
+          } catch (e) {
+            this.error = e.message;
+          } finally {
+            this.submitting = false;
+          }
+        },
+        currency(n) {
+          if (n == null) return '—';
+          return '$' + Number(n).toLocaleString();
+        },
+      },
+      mounted() {
+        this.load();
+      },
+    }).mount('#app');
+  </script>
+</body>
+</html>
