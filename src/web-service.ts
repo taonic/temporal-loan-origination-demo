@@ -61,7 +61,7 @@ async function run() {
     try {
       const workflows = await listWorkflows(
         client,
-        `TaskQueue = 'recoverable-activity' AND ExecutionStatus != 'Terminated'`
+        `TaskQueue = 'recoverable-activity' AND WorkflowType = 'homeLoanWorkflow' AND ExecutionStatus != 'Terminated'`
       );
       res.json({ workflows });
     } catch (error) {
@@ -73,7 +73,7 @@ async function run() {
   app.get('/api/workflows/search', async (req, res) => {
     try {
       const { failedActivity, status } = req.query;
-      const clauses = [`TaskQueue = 'recoverable-activity' AND ExecutionStatus != 'Terminated'`];
+      const clauses = [`TaskQueue = 'recoverable-activity' AND WorkflowType = 'homeLoanWorkflow' AND ExecutionStatus != 'Terminated'`];
       if (failedActivity) {
         clauses.push(`FailedActivity = '${failedActivity}'`);
       }

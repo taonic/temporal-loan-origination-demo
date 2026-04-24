@@ -18,6 +18,7 @@
       --temporal-yellow: #fbbf24;
       --temporal-blue: #60a5fa;
       --temporal-cyan: #06b6d4;
+      --temporal-indigo: #34d399;
       --temporal-gray: #9ca3af;
       --temporal-text: #e5e7eb;
       --temporal-text-dim: #9ca3af;
@@ -215,6 +216,8 @@
     .badge-rollback-pending   { background: rgba(251,146,60,0.18); color: #fb923c; }
     .badge-pending-approval   { background: rgba(6,182,212,0.15); color: var(--temporal-cyan); }
     .badge-approved           { background: rgba(52,211,153,0.15); color: var(--temporal-green); }
+    .badge-rejected           { background: rgba(248,113,113,0.15); color: var(--temporal-red); }
+    .badge-agent-reviewing    { background: rgba(52,211,153,0.15); color: var(--temporal-indigo); }
 
     .failed-activity {
       color: var(--temporal-red);
@@ -246,6 +249,9 @@
     .pipeline-step.rollback-fail { background: #7c2d12; color: #fdba74; border: 1.5px solid #fb923c; animation: pulse 1.5s infinite; }
     .pipeline-step.awaiting-approval { background: var(--temporal-cyan); color: #000; animation: pulse 1.5s infinite; }
     .pipeline-step.approved { background: var(--temporal-green); color: #000; }
+    .pipeline-step.rejected { background: var(--temporal-red); color: #fff; }
+    .pipeline-step.agent-reviewing { background: var(--temporal-indigo); color: #000; animation: pulse 1.5s infinite; }
+    .pipeline-step.agent-done { background: var(--temporal-indigo); color: #000; }
     .pipeline-arrow { color: var(--temporal-border); font-size: 10px; }
     .pipeline-step[data-tooltip]:hover::after {
       content: attr(data-tooltip);
@@ -410,6 +416,83 @@
     /* Compensation history uses fix-history styling with amber accent */
     .compensation-history h4 { color: #fb923c; }
     .compensation-history .comp-action { color: #fb923c; }
+
+    /* AI agent recommendation card */
+    .agent-card {
+      margin-top: 16px;
+      border: 1px solid rgba(52,211,153,0.35);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(52,211,153,0.04);
+    }
+    .agent-card-header {
+      padding: 10px 14px;
+      background: rgba(52,211,153,0.1);
+      border-bottom: 1px solid rgba(52,211,153,0.25);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .agent-card-header h4 {
+      color: var(--temporal-indigo);
+      font-size: 13px;
+      font-weight: 600;
+      flex: 1;
+    }
+    .agent-card-body { padding: 14px; }
+    .agent-decision {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .agent-decision.APPROVE { background: rgba(52,211,153,0.15); color: var(--temporal-green); }
+    .agent-decision.DECLINE { background: rgba(248,113,113,0.15); color: var(--temporal-red); }
+    .agent-decision.ESCALATE { background: rgba(251,191,36,0.15); color: var(--temporal-yellow); }
+    .agent-meta {
+      font-size: 11px;
+      color: var(--temporal-text-dim);
+      margin-top: 6px;
+    }
+    .agent-rationale {
+      margin-top: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--temporal-text);
+    }
+    .agent-trace {
+      margin-top: 12px;
+      border-top: 1px solid rgba(52,211,153,0.2);
+      padding-top: 10px;
+    }
+    .agent-trace summary {
+      font-size: 12px;
+      color: var(--temporal-indigo);
+      cursor: pointer;
+      user-select: none;
+    }
+    .agent-trace-item {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: var(--temporal-bg);
+      border-radius: 6px;
+      border: 1px solid var(--temporal-border);
+    }
+    .agent-trace-tool {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--temporal-indigo);
+      margin-bottom: 4px;
+    }
+    .agent-trace-body {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      color: var(--temporal-text-dim);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
 
     /* Human approval link and approved banner */
     .approval-link {
@@ -684,9 +767,11 @@
           <option value="APPRAISAL_ORDERED">APPRAISAL_ORDERED</option>
           <option value="TITLE_SEARCHED">TITLE_SEARCHED</option>
           <option value="UNDERWRITTEN">UNDERWRITTEN</option>
+          <option value="AGENT_REVIEWING">AGENT_REVIEWING</option>
           <option value="CLOSED">CLOSED</option>
           <option value="PENDING_APPROVAL">PENDING_APPROVAL</option>
           <option value="APPROVED">APPROVED</option>
+          <option value="REJECTED">REJECTED</option>
           <option value="COMPENSATING">COMPENSATING</option>
           <option value="ROLLBACK_PENDING_FIX">ROLLBACK_PENDING_FIX</option>
           <option value="ROLLED_BACK">ROLLED_BACK</option>
@@ -724,7 +809,7 @@
                         class="pipeline-step"
                         :class="stepClass(wf, step.id)"
                         :data-tooltip="step.label">
-                    {{ i + 1 }}
+                    {{ step.icon || (i + 1) }}
                   </span>
                 </div>
               </td>
@@ -847,7 +932,7 @@
                    style="display: flex; align-items: center; gap: 8px;">
                 <span class="pipeline-step" :class="stepClass(selected, step.id)"
                       style="width: 22px; height: 22px; font-size: 11px;">
-                  {{ i + 1 }}
+                  {{ step.icon || (i + 1) }}
                 </span>
                 <span style="font-size: 13px;" :style="stepLabelStyle(selected, step.id)">
                   {{ step.label }}
@@ -884,6 +969,61 @@
             <div class="detail-field">
               <label>Down Payment</label>
               <div class="value">{{ formatCurrency(selected.state.application.downPayment) }}</div>
+            </div>
+          </div>
+
+          <!-- AI Underwriter agent recommendation -->
+          <div class="agent-card" v-if="selected.state?.agentRecommendation">
+            <div class="agent-card-header">
+              <h4>
+                AI Underwriter Recommendation
+                <a :href="`http://localhost:8233/namespaces/default/workflows/${selected.workflowId}-agent`"
+                   target="_blank" rel="noopener"
+                   style="font-weight: normal; font-size: 11px; color: var(--temporal-indigo); text-decoration: none; margin-left: 8px;"
+                   title="Open child agent workflow in Temporal UI">
+                  {{ selected.workflowId }}-agent &#8599;
+                </a>
+              </h4>
+              <span class="agent-decision" :class="selected.state.agentRecommendation.decision">
+                {{ selected.state.agentRecommendation.decision }}
+              </span>
+            </div>
+            <div class="agent-card-body">
+              <div class="agent-meta">
+                Confidence {{ Math.round(selected.state.agentRecommendation.confidence * 100) }}% ·
+                Model <code>{{ selected.state.agentRecommendation.model }}</code> ·
+                {{ selected.state.agentRecommendation.turns }} turn{{ selected.state.agentRecommendation.turns === 1 ? '' : 's' }}
+              </div>
+              <div class="agent-rationale">{{ selected.state.agentRecommendation.rationale }}</div>
+              <details class="agent-trace" v-if="selected.state.agentRecommendation.toolCallTrace?.length">
+                <summary>Tool-call trace ({{ selected.state.agentRecommendation.toolCallTrace.length }} call{{ selected.state.agentRecommendation.toolCallTrace.length === 1 ? '' : 's' }})</summary>
+                <div v-for="(call, i) in selected.state.agentRecommendation.toolCallTrace" :key="i"
+                     class="agent-trace-item">
+                  <div class="agent-trace-tool">{{ call.tool }}({{ JSON.stringify(call.args) }})</div>
+                  <div class="agent-trace-body">{{ call.result }}</div>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <!-- Agent currently working -->
+          <div class="agent-card" v-else-if="selected.state?.status === 'AGENT_REVIEWING'">
+            <div class="agent-card-header">
+              <h4>AI Underwriter Reviewing...</h4>
+              <span class="spinner"></span>
+            </div>
+            <div class="agent-card-body">
+              <div class="agent-meta">
+                A child workflow is running the agent's tool-call loop against the local LLM.
+              </div>
+              <div style="margin-top: 8px;">
+                <a :href="`http://localhost:8233/namespaces/default/workflows/${selected.workflowId}-agent`"
+                   target="_blank" rel="noopener"
+                   style="font-size: 12px; color: var(--temporal-indigo); text-decoration: none;"
+                   title="Open child agent workflow in Temporal UI">
+                  {{ selected.workflowId }}-agent &#8599;
+                </a>
+              </div>
             </div>
           </div>
 
@@ -1112,6 +1252,7 @@
             'orderAppraisal',
             'performTitleSearch',
             'underwrite',
+            'agentReview',
             'closeLoan',
             'humanApproval'
           ],
@@ -1121,6 +1262,7 @@
             { id: 'orderAppraisal', label: 'Appraisal' },
             { id: 'performTitleSearch', label: 'Title Search' },
             { id: 'underwrite', label: 'Underwriting' },
+            { id: 'agentReview', label: 'AI Agent Review' },
             { id: 'closeLoan', label: 'Close Loan' },
             { id: 'humanApproval', label: 'Human Approval' },
           ],
@@ -1329,7 +1471,7 @@
               // Stop conditions:
               //  - Reached terminal state (CLOSED, ROLLED_BACK)
               //  - Paused for human (PENDING_FIX, ROLLBACK_PENDING_FIX) AND has made progress since last fix
-              const terminal = ['APPROVED', 'ROLLED_BACK'].includes(data.state.status);
+              const terminal = ['APPROVED', 'REJECTED', 'ROLLED_BACK'].includes(data.state.status);
               const paused = ['PENDING_FIX', 'ROLLBACK_PENDING_FIX', 'PENDING_APPROVAL'].includes(data.state.status);
               const progressed = newCount > this.prevCompletedCount ||
                                  data.state.status !== this.prevStatus;
@@ -1337,6 +1479,7 @@
                 this.stopModalPoll();
                 this.loadWorkflows();
                 if (data.state.status === 'APPROVED') this.showToast('Application approved — loan complete!');
+                if (data.state.status === 'REJECTED') this.showToast('Application rejected — applicant notified');
                 if (data.state.status === 'ROLLED_BACK') this.showToast('Application rolled back');
               }
             }
@@ -1413,6 +1556,11 @@
           if (stepId === 'humanApproval') {
             if (s.status === 'APPROVED' || completed.includes('humanApproval')) return 'approved';
             if (s.status === 'PENDING_APPROVAL') return 'awaiting-approval';
+            if (s.status === 'REJECTED') return 'rejected';
+          }
+          if (stepId === 'agentReview') {
+            if (completed.includes('agentReview')) return 'agent-done';
+            if (s.status === 'AGENT_REVIEWING') return 'agent-reviewing';
           }
           if (completed.includes(stepId)) return 'done';
           if (s.failedActivity === stepId && s.status === 'PENDING_FIX') return 'fail';
@@ -1427,6 +1575,8 @@
           if (s === 'ROLLED_BACK') return 'badge-rolled-back';
           if (s === 'PENDING_APPROVAL') return 'badge-pending-approval';
           if (s === 'APPROVED') return 'badge-approved';
+          if (s === 'REJECTED') return 'badge-rejected';
+          if (s === 'AGENT_REVIEWING') return 'badge-agent-reviewing';
           if (s === 'CLOSED') return 'badge-closed';
           if (s === 'COMPLETED') return 'badge-completed';
           if (s === 'RUNNING') return 'badge-running';
@@ -1446,6 +1596,9 @@
             'rollback-fail': '#fdba74',
             'awaiting-approval': 'var(--temporal-cyan)',
             approved: 'var(--temporal-green)',
+            rejected: 'var(--temporal-red)',
+            'agent-reviewing': 'var(--temporal-indigo)',
+            'agent-done': 'var(--temporal-indigo)',
             pending: 'var(--temporal-text-dim)',
           };
           return {

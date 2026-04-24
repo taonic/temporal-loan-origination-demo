@@ -4,12 +4,15 @@ import {
   defineQuery,
   setHandler,
   condition,
+  executeChild,
   upsertSearchAttributes,
   log,
 } from '@temporalio/workflow';
 import { defineSearchAttributeKey } from '@temporalio/common';
 import type * as activities from './activities';
+import { underwritingAgentWorkflow } from './agent-workflow';
 import type {
+  AgentRecommendation,
   CancelRequest,
   CompensationEntry,
   FixEntry,
@@ -39,6 +42,8 @@ const {
   startToCloseTimeout: '10 seconds',
 });
 
+export { underwritingAgentWorkflow } from './agent-workflow';
+
 export const retrySignal = defineSignal<[RetryUpdate]>('retry');
 export const cancelSignal = defineSignal<[CancelRequest]>('cancelApplication');
 export const approvalSignal = defineSignal<[]>('approveApplication');
@@ -64,6 +69,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
   const compensatedActivities: string[] = [];
   const fixHistory: FixEntry[] = [];
   const compensationHistory: CompensationEntry[] = [];
+  let agentRecommendation: AgentRecommendation | undefined;
 
   // LIFO compensation stack — unshift on registration, iterate head-first to unwind
   const compensations: Compensation[] = [];
@@ -89,6 +95,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     application: { ...app },
     cancelReason,
     notificationMessage,
+    agentRecommendation,
   }));
 
   setHandler(retrySignal, (update: RetryUpdate) => {
@@ -235,6 +242,35 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     completedActivities.push('underwrite');
     updateStatus('UNDERWRITTEN');
 
+    // Agentic AI underwriter — runs as a child workflow so its tool-call loop
+    // gets its own history, can continue-as-new, and is inspectable in the
+    // Temporal UI as a self-contained execution. Read-only: no compensation.
+    updateStatus('AGENT_REVIEWING');
+    try {
+      agentRecommendation = await executeChild(underwritingAgentWorkflow, {
+        workflowId: `${app.applicationId}-agent`,
+        args: [{ application: { ...app }, creditScore: 750 }],
+      });
+      log.info(
+        `Agent recommendation: ${agentRecommendation.decision} (confidence ${agentRecommendation.confidence})`
+      );
+    } catch (err: any) {
+      // Agent unavailable (e.g. Ollama down) — record as ESCALATE so the
+      // human approver still sees something meaningful instead of a crash.
+      log.warn(`Agent child failed: ${err.message || err}`);
+      agentRecommendation = {
+        decision: 'ESCALATE',
+        confidence: 0,
+        rationale: `Agent unavailable: ${err.message || String(err)}. Human review required.`,
+        toolCallTrace: [],
+        turns: 0,
+        model: 'unavailable',
+        completedAt: new Date().toISOString(),
+      };
+    }
+    completedActivities.push('agentReview');
+    updateStatus('UNDERWRITTEN');
+
     await runForward(
       'closeLoan',
       () => closeLoan(app.applicationId, app.applicantName, app.loanAmount), // Forward
@@ -244,11 +280,22 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     updateStatus('CLOSED');
 
     // Final step: human-in-the-loop approval. Pause and wait for an operator
-    // to hit the approval link before the workflow returns.
+    // to either approve (proceed) or reject (notify applicant, end as REJECTED).
     updateStatus('PENDING_APPROVAL');
-    await condition(() => approvalRequested);
-    completedActivities.push('humanApproval');
-    updateStatus('APPROVED');
+    await condition(() => approvalRequested || cancelRequested);
+    if (cancelRequested) {
+      // Human reject at approval: no saga unwind — closeLoan and earlier steps
+      // stay committed per business policy. Just notify the applicant and end.
+      notificationMessage = await notifyApplicantCancelled(
+        app.applicationId,
+        app.applicantName,
+        cancelReason
+      );
+      updateStatus('REJECTED', '', cancelReason);
+    } else {
+      completedActivities.push('humanApproval');
+      updateStatus('APPROVED');
+    }
   } catch (err: any) {
     // Forward pipeline aborted — unwind the saga in LIFO order
     const trigger = cancelReason || err.message || String(err);
@@ -298,5 +345,6 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     application: { ...app },
     cancelReason,
     notificationMessage,
+    agentRecommendation,
   };
 }

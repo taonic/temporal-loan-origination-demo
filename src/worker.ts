@@ -1,5 +1,6 @@
 import { NativeConnection, Worker } from '@temporalio/worker';
 import * as activities from './activities';
+import * as agentActivities from './agent-activities';
 
 async function run() {
   const connection = await NativeConnection.connect({ address: 'localhost:7233' });
@@ -9,7 +10,7 @@ async function run() {
     namespace: 'default',
     taskQueue: 'recoverable-activity',
     workflowsPath: require.resolve('./workflows'),
-    activities,
+    activities: { ...activities, ...agentActivities },
   });
 
   console.log('Worker started, ctrl+c to exit');
