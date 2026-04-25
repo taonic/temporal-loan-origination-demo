@@ -36,15 +36,6 @@ const AGENT_TOOL_SCHEMAS = {
       propertyAddress: z.string(),
     }),
   }),
-  submitRecommendation: tool({
-    description:
-      'Submit your final underwriting recommendation. Call exactly once when you have enough information. Always provide a rationale that cites the tool results you relied on.',
-    parameters: z.object({
-      decision: z.enum(['APPROVE', 'DECLINE', 'ESCALATE']),
-      confidence: z.number().min(0).max(1),
-      rationale: z.string(),
-    }),
-  }),
 };
 
 export async function callAgentLLM(params: {

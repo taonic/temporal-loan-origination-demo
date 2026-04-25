@@ -5,6 +5,8 @@ import {
   setHandler,
   condition,
   executeChild,
+  isCancellation,
+  CancellationScope,
   upsertSearchAttributes,
   log,
 } from '@temporalio/workflow';
@@ -29,14 +31,10 @@ const {
   verifyIncome,
   runCreditCheck,
   orderAppraisal,
-  performTitleSearch,
   underwrite,
-  closeLoan,
   withdrawCreditInquiry,
   cancelAppraisal,
-  releaseTitleHold,
   releaseUnderwritingReservation,
-  reverseLoanClosure,
   notifyApplicantCancelled,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '10 seconds',
@@ -70,6 +68,9 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
   const fixHistory: FixEntry[] = [];
   const compensationHistory: CompensationEntry[] = [];
   let agentRecommendation: AgentRecommendation | undefined;
+  // Scope that wraps the agent child execution so a cancel signal can propagate
+  // cancellation into the running child mid-flight (not only on the next tool-call boundary).
+  let agentScope: CancellationScope | undefined;
 
   // LIFO compensation stack — unshift on registration, iterate head-first to unwind
   const compensations: Compensation[] = [];
@@ -131,14 +132,17 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
       log.warn('Cancel signal ignored — rollback already in progress');
       return;
     }
-    if (status === 'CLOSED') {
-      log.warn('Cancel signal ignored — loan already closed');
+    if (status === 'APPROVED' || status === 'REJECTED') {
+      log.warn('Cancel signal ignored — workflow already finalized');
       return;
     }
     cancelRequested = true;
     cancelReason = req.reason || 'No reason provided';
     log.info(`Cancel requested: ${cancelReason}`);
     retryRequested = true;
+    // If the agent child is running, propagate cancellation into it so executeChild
+    // returns immediately instead of waiting for the next turn to notice the flag.
+    agentScope?.cancel();
   });
 
   // Recoverable wrapper shared by forward and compensation phases.
@@ -224,14 +228,6 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     updateStatus('APPRAISAL_ORDERED');
 
     await runForward(
-      'performTitleSearch',
-      () => performTitleSearch(app.propertyId, app.propertyAddress), // Forward
-      { name: 'releaseTitleHold', fn: () => releaseTitleHold(app.applicationId, app.propertyId) } // Compensation
-    );
-    completedActivities.push('performTitleSearch');
-    updateStatus('TITLE_SEARCHED');
-
-    await runForward(
       'underwrite',
       () => underwrite(app.applicantName, app.ssn, app.annualIncome, app.loanAmount, app.downPayment), // Forward
       {
@@ -247,14 +243,31 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     // Temporal UI as a self-contained execution. Read-only: no compensation.
     updateStatus('AGENT_REVIEWING');
     try {
-      agentRecommendation = await executeChild(underwritingAgentWorkflow, {
-        workflowId: `${app.applicationId}-agent`,
-        args: [{ application: { ...app }, creditScore: 750 }],
+      // Run the child inside a dedicated cancellable scope. The cancelSignal handler
+      // calls `agentScope.cancel()` to interrupt the child mid-flight; external cancellation
+      // of the child (via Temporal UI) also surfaces here as a CancelledFailure.
+      agentRecommendation = await CancellationScope.cancellable(async () => {
+        agentScope = CancellationScope.current();
+        return executeChild(underwritingAgentWorkflow, {
+          workflowId: `${app.applicationId}-agent`,
+          args: [{ application: { ...app }, creditScore: 750 }],
+        });
       });
       log.info(
         `Agent recommendation: ${agentRecommendation.decision} (confidence ${agentRecommendation.confidence})`
       );
     } catch (err: any) {
+      // Either the operator cancelled the agent child directly (Temporal UI) or a cancel
+      // signal on the parent propagated down via agentScope.cancel(). In both cases, treat
+      // as a cancel of the whole application and fall through to the saga unwind.
+      if (isCancellation(err)) {
+        log.warn('Agent child was cancelled — cancelling loan application');
+        if (!cancelRequested) {
+          cancelRequested = true;
+          cancelReason = 'Agent child workflow cancelled by operator';
+        }
+        throw err;
+      }
       // Agent unavailable (e.g. Ollama down) — record as ESCALATE so the
       // human approver still sees something meaningful instead of a crash.
       log.warn(`Agent child failed: ${err.message || err}`);
@@ -271,21 +284,13 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     completedActivities.push('agentReview');
     updateStatus('UNDERWRITTEN');
 
-    await runForward(
-      'closeLoan',
-      () => closeLoan(app.applicationId, app.applicantName, app.loanAmount), // Forward
-      { name: 'reverseLoanClosure', fn: () => reverseLoanClosure(app.applicationId, app.loanAmount) } // Compensation
-    );
-    completedActivities.push('closeLoan');
-    updateStatus('CLOSED');
-
     // Final step: human-in-the-loop approval. Pause and wait for an operator
-    // to either approve (proceed) or reject (notify applicant, end as REJECTED).
+    // to either approve (fund the loan) or reject (notify applicant, end as REJECTED).
     updateStatus('PENDING_APPROVAL');
     await condition(() => approvalRequested || cancelRequested);
     if (cancelRequested) {
-      // Human reject at approval: no saga unwind — closeLoan and earlier steps
-      // stay committed per business policy. Just notify the applicant and end.
+      // Human reject at approval: no saga unwind — earlier holds (credit, appraisal,
+      // underwriting reservation) stay committed per business policy. Just notify and end.
       notificationMessage = await notifyApplicantCancelled(
         app.applicationId,
         app.applicantName,
@@ -297,41 +302,47 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
       updateStatus('APPROVED');
     }
   } catch (err: any) {
-    // Forward pipeline aborted — unwind the saga in LIFO order
-    const trigger = cancelReason || err.message || String(err);
-    log.warn(`Forward pipeline aborted: ${trigger} — running saga compensations`);
-    updateStatus('COMPENSATING', '', trigger);
+    // Forward pipeline aborted — unwind the saga in LIFO order.
+    // Wrap the whole cleanup in a non-cancellable scope so that even if the parent
+    // workflow itself was cancelled (propagating CancelledFailure into the catch block
+    // via a child cancel or a Temporal cancel of the parent), compensation activities
+    // still run to completion instead of being aborted mid-unwind.
+    await CancellationScope.nonCancellable(async () => {
+      const trigger = cancelReason || err.message || String(err);
+      log.warn(`Forward pipeline aborted: ${trigger} — running saga compensations`);
+      updateStatus('COMPENSATING', '', trigger);
 
-    for (const comp of compensations) {
-      // Skip compensations whose forward activity never completed — idempotency
-      // means calling them would also be safe, but skipping avoids noise in the history
-      if (!completedActivities.includes(comp.forwardActivity)) {
-        log.info(`Skipping ${comp.compensationActivity}: ${comp.forwardActivity} never completed`);
-        continue;
+      for (const comp of compensations) {
+        // Skip compensations whose forward activity never completed — idempotency
+        // means calling them would also be safe, but skipping avoids noise in the history
+        if (!completedActivities.includes(comp.forwardActivity)) {
+          log.info(`Skipping ${comp.compensationActivity}: ${comp.forwardActivity} never completed`);
+          continue;
+        }
+        const result = await recoverableStep(
+          comp.forwardActivity,
+          comp.run,
+          'compensation'
+        );
+        compensationHistory.push({
+          forwardActivity: comp.forwardActivity,
+          compensationActivity: comp.compensationActivity,
+          result,
+        });
+        compensatedActivities.push(comp.forwardActivity);
+        updateStatus('COMPENSATING');
       }
-      const result = await recoverableStep(
-        comp.forwardActivity,
-        comp.run,
+
+      // After side effects are unwound, notify the applicant that the application was cancelled.
+      // Run through the recoverable wrapper so a transient email outage pauses rather than crashes.
+      notificationMessage = await recoverableStep(
+        'notifyApplicantCancelled',
+        () => notifyApplicantCancelled(app.applicationId, app.applicantName, trigger),
         'compensation'
       );
-      compensationHistory.push({
-        forwardActivity: comp.forwardActivity,
-        compensationActivity: comp.compensationActivity,
-        result,
-      });
-      compensatedActivities.push(comp.forwardActivity);
-      updateStatus('COMPENSATING');
-    }
 
-    // After side effects are unwound, notify the applicant that the application was cancelled.
-    // Run through the recoverable wrapper so a transient email outage pauses rather than crashes.
-    notificationMessage = await recoverableStep(
-      'notifyApplicantCancelled',
-      () => notifyApplicantCancelled(app.applicationId, app.applicantName, trigger),
-      'compensation'
-    );
-
-    updateStatus('ROLLED_BACK', '', trigger);
+      updateStatus('ROLLED_BACK', '', trigger);
+    });
   }
 
   return {

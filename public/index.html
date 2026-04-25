@@ -207,7 +207,6 @@
     }
     .badge-started     { background: rgba(96,165,250,0.15); color: var(--temporal-blue); }
     .badge-pending-fix { background: rgba(251,191,36,0.15); color: var(--temporal-yellow); }
-    .badge-closed      { background: rgba(52,211,153,0.15); color: var(--temporal-green); }
     .badge-completed   { background: rgba(52,211,153,0.15); color: var(--temporal-green); }
     .badge-running     { background: rgba(96,165,250,0.15); color: var(--temporal-blue); }
     .badge-failed      { background: rgba(248,113,113,0.15); color: var(--temporal-red); }
@@ -765,10 +764,8 @@
           <option value="INCOME_VERIFIED">INCOME_VERIFIED</option>
           <option value="CREDIT_CHECKED">CREDIT_CHECKED</option>
           <option value="APPRAISAL_ORDERED">APPRAISAL_ORDERED</option>
-          <option value="TITLE_SEARCHED">TITLE_SEARCHED</option>
           <option value="UNDERWRITTEN">UNDERWRITTEN</option>
           <option value="AGENT_REVIEWING">AGENT_REVIEWING</option>
-          <option value="CLOSED">CLOSED</option>
           <option value="PENDING_APPROVAL">PENDING_APPROVAL</option>
           <option value="APPROVED">APPROVED</option>
           <option value="REJECTED">REJECTED</option>
@@ -1184,7 +1181,6 @@
                 <select v-model="fixKey">
                   <option value="">(none — just retry)</option>
                   <option value="propertyAddress">propertyAddress</option>
-                  <option value="propertyId">propertyId</option>
                 </select>
               </div>
               <div class="field" v-if="fixKey && selected.state">
@@ -1232,10 +1228,9 @@
             { name: 'Clean — all pass', applicantName: 'Alice Johnson', ssn: '123-45-6789', employerName: 'Acme Corp', annualIncome: 120000, propertyAddress: '123 Oak St, Springfield', propertyId: 'PROP-001', loanAmount: 350000, downPayment: 70000 },
             { name: 'Bad SSN — credit check fails', applicantName: 'Bob Smith', ssn: '000-00-0000', employerName: 'TechCo', annualIncome: 95000, propertyAddress: '456 Elm Ave, Shelbyville', propertyId: 'PROP-002', loanAmount: 280000, downPayment: 56000 },
             { name: 'Invalid address — appraisal fails', applicantName: 'Carol Davis', ssn: '987-65-4321', employerName: 'HealthPlus', annualIncome: 105000, propertyAddress: 'INVALID_ADDRESS', propertyId: 'PROP-003', loanAmount: 320000, downPayment: 64000 },
-            { name: 'Missing property ID — title search fails', applicantName: 'Dan Miller', ssn: '555-12-3456', employerName: 'EduStar', annualIncome: 88000, propertyAddress: '789 Pine Rd, Capital City', propertyId: 'MISSING', loanAmount: 250000, downPayment: 50000 },
             { name: 'High DTI — underwriting fails', applicantName: 'Eve Wilson', ssn: '111-22-3333', employerName: 'StartupXYZ', annualIncome: 45000, propertyAddress: '321 Birch Ln, Ogdenville', propertyId: 'PROP-005', loanAmount: 500000, downPayment: 10000 },
             { name: 'Unknown employer — income fails', applicantName: 'Frank Brown', ssn: '444-55-6666', employerName: 'UNKNOWN_EMPLOYER', annualIncome: 75000, propertyAddress: '654 Maple Dr, North Haverbrook', propertyId: 'PROP-006', loanAmount: 220000, downPayment: 44000 },
-            { name: 'Multi — employer + address + property ID', applicantName: 'Grace Lee', ssn: '777-88-9999', employerName: 'UNKNOWN_EMPLOYER', annualIncome: 92000, propertyAddress: 'INVALID_ADDRESS', propertyId: 'MISSING', loanAmount: 300000, downPayment: 60000 },
+            { name: 'Multi — employer + address', applicantName: 'Grace Lee', ssn: '777-88-9999', employerName: 'UNKNOWN_EMPLOYER', annualIncome: 92000, propertyAddress: 'INVALID_ADDRESS', propertyId: 'PROP-007', loanAmount: 300000, downPayment: 60000 },
             { name: 'Multi — bad SSN + high DTI', applicantName: 'Henry Park', ssn: '000-00-0000', employerName: 'MegaCorp', annualIncome: 50000, propertyAddress: '55 River Rd, Brockway', propertyId: 'PROP-008', loanAmount: 480000, downPayment: 5000 },
             { name: 'Multi — employer + SSN + address + DTI', applicantName: 'Irene Tanaka', ssn: '000-00-0000', employerName: 'UNKNOWN_EMPLOYER', annualIncome: 40000, propertyAddress: 'INVALID_ADDRESS', propertyId: 'PROP-009', loanAmount: 600000, downPayment: 5000 },
           ],
@@ -1250,20 +1245,16 @@
             'verifyIncome',
             'runCreditCheck',
             'orderAppraisal',
-            'performTitleSearch',
             'underwrite',
             'agentReview',
-            'closeLoan',
             'humanApproval'
           ],
           pipelineSteps: [
             { id: 'verifyIncome', label: 'Verify Income' },
             { id: 'runCreditCheck', label: 'Credit Check' },
             { id: 'orderAppraisal', label: 'Appraisal' },
-            { id: 'performTitleSearch', label: 'Title Search' },
             { id: 'underwrite', label: 'Underwriting' },
             { id: 'agentReview', label: 'AI Agent Review' },
-            { id: 'closeLoan', label: 'Close Loan' },
             { id: 'humanApproval', label: 'Human Approval' },
           ],
           // Steps with external side effects — these register a compensation.
@@ -1271,9 +1262,7 @@
           stepsWithCompensation: [
             'runCreditCheck',
             'orderAppraisal',
-            'performTitleSearch',
             'underwrite',
-            'closeLoan',
           ]
         };
       },
@@ -1329,13 +1318,11 @@
           // Which compensations need a field patch to proceed
           const rollbackFixes = {
             orderAppraisal: { key: 'propertyAddress', hint: '100 Main St, Anytown' },
-            performTitleSearch: { key: 'propertyId', hint: 'PROP-VALID' },
           };
           const forwardFixes = {
             verifyIncome: { key: 'employerName', hint: 'Acme Corp' },
             runCreditCheck: { key: 'ssn', hint: '123-45-6789' },
             orderAppraisal: { key: 'propertyAddress', hint: '100 Main St, Anytown' },
-            performTitleSearch: { key: 'propertyId', hint: 'PROP-100' },
             underwrite: { key: 'downPayment', hint: '100000' },
           };
           const fix = status === 'ROLLBACK_PENDING_FIX' ? rollbackFixes[fa] : forwardFixes[fa];
@@ -1345,7 +1332,7 @@
         showCancelButton() {
           if (this.selected?.wfStatus !== 'RUNNING') return false;
           const s = this.selected?.state?.status;
-          return !!s && !['CLOSED', 'PENDING_APPROVAL', 'APPROVED', 'ROLLED_BACK', 'COMPENSATING', 'ROLLBACK_PENDING_FIX', 'FAILED'].includes(s);
+          return !!s && !['PENDING_APPROVAL', 'APPROVED', 'ROLLED_BACK', 'COMPENSATING', 'ROLLBACK_PENDING_FIX', 'FAILED'].includes(s);
         },
         compensatableCount() {
           const completed = this.selected?.state?.completedActivities || [];
@@ -1356,9 +1343,7 @@
           const map = {
             runCreditCheck: 'withdrawCreditInquiry',
             orderAppraisal: 'cancelAppraisal',
-            performTitleSearch: 'releaseTitleHold',
             underwrite: 'releaseUnderwritingReservation',
-            closeLoan: 'reverseLoanClosure',
           };
           const fa = this.selected?.state?.failedActivity;
           return map[fa] || 'compensation';
@@ -1469,7 +1454,7 @@
                 state: data.state,
               };
               // Stop conditions:
-              //  - Reached terminal state (CLOSED, ROLLED_BACK)
+              //  - Reached terminal state (APPROVED, REJECTED, ROLLED_BACK)
               //  - Paused for human (PENDING_FIX, ROLLBACK_PENDING_FIX) AND has made progress since last fix
               const terminal = ['APPROVED', 'REJECTED', 'ROLLED_BACK'].includes(data.state.status);
               const paused = ['PENDING_FIX', 'ROLLBACK_PENDING_FIX', 'PENDING_APPROVAL'].includes(data.state.status);
@@ -1577,7 +1562,6 @@
           if (s === 'APPROVED') return 'badge-approved';
           if (s === 'REJECTED') return 'badge-rejected';
           if (s === 'AGENT_REVIEWING') return 'badge-agent-reviewing';
-          if (s === 'CLOSED') return 'badge-closed';
           if (s === 'COMPLETED') return 'badge-completed';
           if (s === 'RUNNING') return 'badge-running';
           if (s === 'FAILED') return 'badge-failed';

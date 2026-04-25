@@ -15,10 +15,8 @@ export type LoanStatus =
   | 'INCOME_VERIFIED'
   | 'CREDIT_CHECKED'
   | 'APPRAISAL_ORDERED'
-  | 'TITLE_SEARCHED'
   | 'UNDERWRITTEN'
   | 'AGENT_REVIEWING'
-  | 'CLOSED'
   | 'PENDING_APPROVAL'
   | 'APPROVED'
   | 'REJECTED'
@@ -32,10 +30,8 @@ export type ActivityName =
   | 'verifyIncome'
   | 'runCreditCheck'
   | 'orderAppraisal'
-  | 'performTitleSearch'
   | 'underwrite'
   | 'agentReview'
-  | 'closeLoan'
   | 'humanApproval';
 
 export type AgentDecision = 'APPROVE' | 'DECLINE' | 'ESCALATE';

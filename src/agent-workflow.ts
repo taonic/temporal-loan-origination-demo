@@ -1,6 +1,7 @@
 import { proxyActivities, log } from '@temporalio/workflow';
 import type * as agentActivities from './agent-activities';
 import type {
+  AgentDecision,
   AgentInput,
   AgentMessage,
   AgentMessageContent,
@@ -38,10 +39,10 @@ Available tools (all read-only):
 
 Process:
 1. Call info tools you need — typically 2-3 calls is enough. Do not call the same tool twice with the same arguments.
-2. When you have enough information, call submitRecommendation exactly once with:
-   - decision: APPROVE, DECLINE, or ESCALATE
-   - confidence: 0.0–1.0
-   - rationale: 2-3 sentences citing the specific tool results you relied on
+2. When you have enough information, stop calling tools and reply with your final recommendation in this EXACT format, each field on its own line:
+   DECISION: APPROVE | DECLINE | ESCALATE
+   CONFIDENCE: <number between 0.0 and 1.0>
+   RATIONALE: <2-3 sentences citing the specific tool results you relied on>
 
 Guidelines:
 - DECLINE if compliance watchlist returns MATCH, or if credit shows multiple serious red flags (several delinquencies + high utilization).
@@ -64,6 +65,23 @@ function formatApplicationMessage(input: AgentInput): string {
 - Preliminary credit score: ${input.creditScore}
 
 Use the available tools to gather information, then call submitRecommendation.`;
+}
+
+// Pull DECISION / CONFIDENCE / RATIONALE out of the model's free-text reply.
+// Returns null if no DECISION line is present — caller escalates in that case.
+function parseRecommendation(
+  text: string
+): { decision: AgentDecision; confidence: number; rationale: string } | null {
+  const decisionMatch = text.match(/DECISION\s*:\s*(APPROVE|DECLINE|ESCALATE)/i);
+  if (!decisionMatch) return null;
+  const confidenceMatch = text.match(/CONFIDENCE\s*:\s*(\d*\.?\d+)/i);
+  const rationaleMatch = text.match(/RATIONALE\s*:\s*([\s\S]+?)(?:\n\s*\n|$)/i);
+  const confidence = confidenceMatch ? Math.min(1, Math.max(0, parseFloat(confidenceMatch[1]))) : 0.5;
+  return {
+    decision: decisionMatch[1].toUpperCase() as AgentDecision,
+    confidence,
+    rationale: rationaleMatch ? rationaleMatch[1].trim() : text.trim(),
+  };
 }
 
 async function dispatchTool(
@@ -89,7 +107,7 @@ async function dispatchTool(
         );
       default:
         return JSON.stringify({
-          error: `Unknown tool '${name}'. Available: lookupFullCreditReport, checkComplianceWatchlist, getPropertyComparables, submitRecommendation.`,
+          error: `Unknown tool '${name}'. Available: lookupFullCreditReport, checkComplianceWatchlist, getPropertyComparables.`,
         });
     }
   } catch (e: any) {
@@ -125,32 +143,24 @@ export async function underwritingAgentWorkflow(
     }
     messages.push({ role: 'assistant', content: assistantParts });
 
-    // Terminal tool — agent is done
-    const submit = resp.toolCalls.find((tc) => tc.toolName === 'submitRecommendation');
-    if (submit) {
-      const args = submit.args as {
-        decision: 'APPROVE' | 'DECLINE' | 'ESCALATE';
-        confidence: number;
-        rationale: string;
-      };
-      return {
-        decision: args.decision,
-        confidence: args.confidence,
-        rationale: args.rationale,
-        toolCallTrace,
-        turns: turn,
-        model: lastModel,
-        completedAt: new Date().toISOString(),
-      };
-    }
-
-    // No tool calls at all — model gave up without submitting
+    // No tool calls — the model has produced its final answer in plain text.
+    // Parse the structured DECISION/CONFIDENCE/RATIONALE block out of it.
     if (resp.toolCalls.length === 0) {
-      log.warn('Agent stopped without calling a tool');
+      const parsed = parseRecommendation(resp.text);
+      if (parsed) {
+        return {
+          ...parsed,
+          toolCallTrace,
+          turns: turn,
+          model: lastModel,
+          completedAt: new Date().toISOString(),
+        };
+      }
+      log.warn('Agent stopped without a parseable recommendation');
       return {
         decision: 'ESCALATE',
         confidence: 0,
-        rationale: `Agent stopped without a recommendation. Last text: "${resp.text.slice(0, 200)}"`,
+        rationale: `Could not parse recommendation. Last text: "${resp.text.slice(0, 200)}"`,
         toolCallTrace,
         turns: turn,
         model: lastModel,

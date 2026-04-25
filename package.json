@@ -8,10 +8,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
-    "start": "ts-node src/worker.ts",
-    "start.watch": "nodemon src/worker.ts",
-    "workflow": "ts-node src/client.ts",
-    "web": "nodemon src/web-service.ts"
+    "worker": "ts-node src/worker.ts",
+    "worker.watch": "nodemon src/worker.ts",
+    "web": "nodemon src/web-service.ts",
+    "llm": "docker compose up"
   },
   "nodemonConfig": {
     "execMap": {

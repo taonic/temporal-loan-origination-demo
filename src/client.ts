@@ -50,20 +50,6 @@ const scenarios: { name: string; application: LoanApplication }[] = [
     },
   },
   {
-    name: 'Missing property ID — title search fails',
-    application: {
-      applicationId: 'LOAN-004',
-      applicantName: 'Dan Miller',
-      ssn: '555-12-3456',
-      employerName: 'EduStar',
-      annualIncome: 88000,
-      propertyAddress: '789 Pine Rd, Capital City',
-      propertyId: 'MISSING',
-      loanAmount: 250000,
-      downPayment: 50000,
-    },
-  },
-  {
     name: 'High DTI — underwriting fails',
     application: {
       applicationId: 'LOAN-005',
@@ -92,7 +78,7 @@ const scenarios: { name: string; application: LoanApplication }[] = [
     },
   },
   {
-    name: 'Multi-issue — bad employer + invalid address + missing property ID',
+    name: 'Multi-issue — bad employer + invalid address',
     application: {
       applicationId: 'LOAN-007',
       applicantName: 'Grace Lee',
@@ -100,7 +86,7 @@ const scenarios: { name: string; application: LoanApplication }[] = [
       employerName: 'UNKNOWN_EMPLOYER',
       annualIncome: 92000,
       propertyAddress: 'INVALID_ADDRESS',
-      propertyId: 'MISSING',
+      propertyId: 'PROP-007',
       loanAmount: 300000,
       downPayment: 60000,
     },
@@ -134,7 +120,7 @@ const scenarios: { name: string; application: LoanApplication }[] = [
     },
   },
   {
-    name: 'Saga — OFAC hit at underwrite, auto-rolls back through credit/appraisal/title',
+    name: 'Saga — OFAC hit at underwrite, auto-rolls back through credit/appraisal',
     application: {
       applicationId: 'LOAN-010',
       applicantName: 'Judy Reed',

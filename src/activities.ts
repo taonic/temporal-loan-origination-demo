@@ -44,18 +44,6 @@ export async function orderAppraisal(
   return `Appraisal completed for ${propertyAddress}: valued at $${loanAmount * 1.1}`;
 }
 
-export async function performTitleSearch(
-  propertyId: string,
-  propertyAddress: string
-): Promise<string> {
-  if (propertyId === '' || propertyId === 'MISSING') {
-    throw ApplicationFailure.nonRetryable(
-      `Title search failed — missing or invalid property ID: "${propertyId}" for ${propertyAddress}`
-    );
-  }
-  return `Title is clear for property ${propertyId} at ${propertyAddress}`;
-}
-
 export async function underwrite(
   applicantName: string,
   ssn: string,
@@ -79,14 +67,6 @@ export async function underwrite(
     );
   }
   return `Underwriting approved for ${applicantName}: DTI ${dti.toFixed(0)}%`;
-}
-
-export async function closeLoan(
-  applicationId: string,
-  applicantName: string,
-  loanAmount: number
-): Promise<string> {
-  return `Loan ${applicationId} closed for ${applicantName}: $${loanAmount} funded`;
 }
 
 // ---------- Compensation activities ----------
@@ -116,30 +96,11 @@ export async function cancelAppraisal(
   return `Appraisal cancelled for ${applicationId}: $50 cancellation fee retained, $450 refund issued`;
 }
 
-export async function releaseTitleHold(
-  applicationId: string,
-  propertyId: string
-): Promise<string> {
-  if (propertyId === 'LOCKED_TITLE') {
-    throw ApplicationFailure.nonRetryable(
-      `Title company rejected release for property ${propertyId} — supply a valid property ID to release the hold`
-    );
-  }
-  return `Title hold released for ${applicationId} on property ${propertyId}`;
-}
-
 export async function releaseUnderwritingReservation(
   applicationId: string,
   loanAmount: number
 ): Promise<string> {
   return `Released $${loanAmount} underwriting capacity for ${applicationId}`;
-}
-
-export async function reverseLoanClosure(
-  applicationId: string,
-  loanAmount: number
-): Promise<string> {
-  return `Clawback initiated for ${applicationId}: $${loanAmount} funds recalled, lien release recorded`;
 }
 
 // Post-rollback notification — tells the applicant their application was cancelled.

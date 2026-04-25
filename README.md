@@ -7,7 +7,7 @@ Demonstrates four complementary patterns on Temporal:
 1. **Recoverable activity pattern** — failed activities pause the workflow and wait for a human to fix the data via a Temporal Signal before retrying.
 2. **Saga / compensation pattern** — when forward progress is not possible (compliance block, applicant withdrawal), the workflow unwinds completed side-effecting steps in LIFO order. Compensations that fail themselves enter the same pause-and-fix loop.
 3. **Durable agent pattern** — an LLM-driven underwriter runs as a child workflow. Each model call and each tool invocation is its own activity, so the tool-use loop is durable, replayable, and inspectable in the Temporal UI.
-4. **Human-in-the-loop approval** — after the loan closes, the workflow blocks on `PENDING_APPROVAL` until an operator approves (complete) or rejects (notify applicant, terminate in `REJECTED`) from a workflow-scoped approval page.
+4. **Human-in-the-loop approval** — after the AI agent review, the workflow blocks on `PENDING_APPROVAL` until an operator approves (complete) or rejects (notify applicant, terminate in `REJECTED`) from a workflow-scoped approval page.
 
 Inspired by [temporal-training-exercise-typescript/solution7](https://github.com/temporal-sa/temporal-training-exercise-typescript/blob/main/solution7/src/workflow.ts) and the [saga pattern guide](https://taonic.github.io/temporal-design-patterns/saga-pattern.html).
 
@@ -44,10 +44,8 @@ Which steps compensate:
 | `verifyIncome` | Read-only | *(none)* |
 | `runCreditCheck` | Hard inquiry on credit bureau | `withdrawCreditInquiry` |
 | `orderAppraisal` | Appraiser booking + fee | `cancelAppraisal` |
-| `performTitleSearch` | Title company fee + placeholder | `releaseTitleHold` |
 | `underwrite` | Reserved lending capacity | `releaseUnderwritingReservation` |
 | `agentReview` | Read-only (LLM + info tools) | *(none)* |
-| `closeLoan` | Funds disbursed + lien recorded | `reverseLoanClosure` |
 | `humanApproval` | Read-only (pause for operator) | *(none)* |
 
 Compensations are **idempotent** — registering before execution means they may be invoked even if the forward step never landed. The workflow skips compensations whose forward step never entered `completedActivities` as an optimization, but safety depends on idempotency, not this check.
@@ -96,7 +94,7 @@ On macOS, Docker Desktop can't pass through Metal GPU — Ollama in Docker runs 
 
 ## Human-in-the-loop Approval
 
-After `closeLoan` funds the loan, the workflow sets status to `PENDING_APPROVAL` and blocks on a condition that wakes on either an `approveApplication` signal or a `cancelApplication` signal:
+After the AI agent review, the workflow sets status to `PENDING_APPROVAL` and blocks on a condition that wakes on either an `approveApplication` signal or a `cancelApplication` signal:
 
 ```typescript
 updateStatus('PENDING_APPROVAL');
@@ -113,22 +111,22 @@ if (cancelRequested) {
 The dashboard modal shows an **Open Approval Page ↗** link that opens `/approve.html?id=<workflowId>` in a new tab. That page displays the loan details plus the AI underwriter's recommendation and tool-call trace, and offers:
 
 - **Approve** → sends `approveApplication` signal → workflow completes in `APPROVED`.
-- **Reject** (with required reason) → sends `cancelApplication` signal → workflow notifies the applicant and completes in `REJECTED`. No saga unwind — prior side effects including the funded loan stay committed per business policy.
+- **Reject** (with required reason) → sends `cancelApplication` signal → workflow notifies the applicant and completes in `REJECTED`. No saga unwind — earlier holds (credit, appraisal, underwriting reservation) stay committed per business policy.
 
 ## Home Loan Pipeline
 
-The workflow processes a loan application through 8 sequential activities:
+The workflow processes a loan application through 6 sequential activities:
 
 ```
-Verify Income → Credit Check → Appraisal → Title Search → Underwriting
-  → AI Agent Review (child workflow) → Close Loan → Human Approval
+Verify Income → Credit Check → Appraisal → Underwriting
+  → AI Agent Review (child workflow) → Human Approval
 ```
 
 Each forward activity validates its inputs and throws `ApplicationFailure.nonRetryable()` on bad data, triggering the recovery loop.
 
 ## Failure Scenarios
 
-The client starts 11 workflows covering both recovery and saga cases:
+The client starts 10 workflows covering both recovery and saga cases:
 
 ### Single-issue (recovery)
 
@@ -137,7 +135,6 @@ The client starts 11 workflows covering both recovery and saga cases:
 | LOAN-001 | Alice Johnson | *(none)* | Clean run — all steps pass |
 | LOAN-002 | Bob Smith | `runCreditCheck` | Invalid SSN `000-00-0000` |
 | LOAN-003 | Carol Davis | `orderAppraisal` | Property address is `INVALID_ADDRESS` |
-| LOAN-004 | Dan Miller | `performTitleSearch` | Property ID is `MISSING` |
 | LOAN-005 | Eve Wilson | `underwrite` | DTI ratio 1089% exceeds 400% limit |
 | LOAN-006 | Frank Brown | `verifyIncome` | Employer `UNKNOWN_EMPLOYER` not in database |
 
@@ -145,7 +142,7 @@ The client starts 11 workflows covering both recovery and saga cases:
 
 | Workflow | Applicant | Fails At (in sequence) |
 |----------|-----------|------------------------|
-| LOAN-007 | Grace Lee | `verifyIncome` → `orderAppraisal` → `performTitleSearch` |
+| LOAN-007 | Grace Lee | `verifyIncome` → `orderAppraisal` |
 | LOAN-008 | Henry Park | `runCreditCheck` → `underwrite` |
 | LOAN-009 | Irene Tanaka | `verifyIncome` → `runCreditCheck` → `orderAppraisal` → `underwrite` |
 
@@ -153,7 +150,7 @@ The client starts 11 workflows covering both recovery and saga cases:
 
 | Workflow | Applicant | Trigger | Behavior |
 |----------|-----------|---------|----------|
-| LOAN-010 | Judy Reed | OFAC hit (SSN starts `999`) at `underwrite` | Auto-rolls back credit/appraisal/title compensations in LIFO order |
+| LOAN-010 | Judy Reed | OFAC hit (SSN starts `999`) at `underwrite` | Auto-rolls back credit/appraisal compensations in LIFO order |
 | LOAN-011 | Kevin Liu | OFAC hit + `APPRAISER_OFFLINE` in address | Rollback reaches `cancelAppraisal`, fails, enters `ROLLBACK_PENDING_FIX` — patch `propertyAddress` to finish the unwind |
 
 You can also cancel any running workflow from the UI's **Cancel Application** button to trigger the same saga unwind with a custom reason.
@@ -163,7 +160,7 @@ You can also cancel any running workflow from the UI's **Cancel Application** bu
 A Temporal-branded dashboard at `http://localhost:3000` with:
 
 - **Stats bar** — clickable cards for total, pending fix, running, awaiting approval, approved, and rolled-back counts; click to filter the table
-- **Pipeline visualization** — 8-step indicator per workflow: green (done/approved), red (forward failure or rejected), amber pulse (compensating), amber-ringed red (rollback stuck), gray-strike (compensated), cyan pulse (awaiting approval), gray (pending)
+- **Pipeline visualization** — 6-step indicator per workflow: green (done/approved), red (forward failure or rejected), amber pulse (compensating), amber-ringed red (rollback stuck), gray-strike (compensated), cyan pulse (awaiting approval), gray (pending)
 - **AI underwriter recommendation card** — shows decision (APPROVE/DECLINE/ESCALATE), confidence, model, turn count, rationale, and collapsible tool-call trace; header links to the child agent workflow in Temporal UI
 - **Filter by failed activity / status** — includes `AGENT_REVIEWING`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, and rollback states
 - **Patch and Retry** — patch a bad field and retry the failed activity; suggested fix is context-aware (different suggestions for forward failures vs. stuck compensations)
@@ -192,7 +189,7 @@ npm install
 Start Ollama and pull the model (one-time, ~1GB for the default `qwen2.5:1.5b`):
 
 ```bash
-docker compose up -d
+npm run llm
 # wait for the ollama-pull sidecar to finish; watch with:
 docker compose logs -f ollama-pull
 ```
@@ -218,7 +215,7 @@ temporal operator search-attribute create --name FailedActivity --type Keyword
 # Terminal 1: Start the worker
 npm start
 
-# Terminal 2: Start 11 loan workflows with different failure scenarios
+# Terminal 2: Start 10 loan workflows with different failure scenarios
 npm run workflow
 
 # Terminal 3: Start the UI
@@ -289,7 +286,7 @@ temporal workflow list --query "LoanStatus = 'PENDING_APPROVAL'"
 ```
 src/
 ├── models.ts              # LoanApplication, LoanState, AgentRecommendation, message/content types
-├── activities.ts          # 6 forward + 5 compensation + 1 post-rollback notification activity
+├── activities.ts          # 4 forward + 3 compensation + 1 post-rollback notification activity
 ├── agent-activities.ts    # LLM call (Vercel AI SDK + Ollama) + 3 mock info-tool activities
 ├── workflows.ts           # homeLoanWorkflow: recoverableStep, LIFO saga stack, approval wait
 ├── agent-workflow.ts      # underwritingAgentWorkflow child: tool-call loop with MAX_TURNS cap

@@ -10,7 +10,8 @@
       "Bash(python3 -m json.tool)",
       "Bash(curl -s -X POST http://localhost:11434/api/chat -H 'Content-Type: application/json' -d '{ *)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); m=d.get\\('message',{}\\); print\\('tool_calls:', json.dumps\\(m.get\\('tool_calls',[]\\),indent=2\\)\\); print\\('text:', m.get\\('content',''\\)\\)\")",
-      "Bash(curl -s -m 120 -X POST http://localhost:11434/api/chat -H 'Content-Type: application/json' -d '{ *)"
+      "Bash(curl -s -m 120 -X POST http://localhost:11434/api/chat -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(npx tsc *)"
     ]
   }
 }
