@@ -130,6 +130,31 @@ export async function underwritingAgentWorkflow(
     const resp = await callAgentLLM({ messages });
     lastModel = resp.model;
 
+    // Vercel AI SDK rejected the model's tool call (missing/wrong-typed args).
+    // Reconstruct the assistant turn the model intended, then push a tool-result
+    // carrying the Zod error so the model can self-correct on the next turn.
+    if (resp.validationError) {
+      const ve = resp.validationError;
+      log.warn(`Tool args validation failed for ${ve.toolName}: ${ve.message}`);
+      messages.push({
+        role: 'assistant',
+        content: [
+          { type: 'tool-call', toolCallId: ve.toolCallId, toolName: ve.toolName, args: ve.args },
+        ],
+      });
+      const errorResult = JSON.stringify({
+        error: `Your call to '${ve.toolName}' had invalid arguments and was rejected: ${ve.message} Call the tool again with all required arguments.`,
+      });
+      toolCallTrace.push({ tool: ve.toolName, args: ve.args, result: errorResult });
+      messages.push({
+        role: 'tool',
+        content: [
+          { type: 'tool-result', toolCallId: ve.toolCallId, toolName: ve.toolName, result: errorResult },
+        ],
+      });
+      continue;
+    }
+
     // Record the assistant's turn (text + any tool calls it requested)
     const assistantParts: AgentMessageContent[] = [];
     if (resp.text) assistantParts.push({ type: 'text', text: resp.text });

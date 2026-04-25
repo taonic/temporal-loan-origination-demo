@@ -57,6 +57,15 @@ export interface AgentLLMResponse {
   toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
   finishReason: string;
   model: string;
+  // Set when the Vercel AI SDK rejected the model's tool call as invalid (e.g. missing
+  // required arg). The workflow surfaces it back to the model on the next turn so it
+  // can self-correct, instead of letting the activity throw and retry the same prompt.
+  validationError?: {
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    message: string;
+  };
 }
 
 export interface AgentInput {

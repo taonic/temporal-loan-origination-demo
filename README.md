@@ -35,7 +35,7 @@ When an activity fails:
 
 ## Saga pattern
 
-Each step that produces an external side effect registers a compensation **before** it executes. Registrations go onto a LIFO stack via `unshift()`. When the forward pipeline aborts — either a `RollbackRequired` failure from an activity or a `cancelApplication` signal — the catch block unwinds the stack, running each compensation through the same `recoverableStep` wrapper. A compensation that fails (e.g. vendor outage) enters `ROLLBACK_PENDING_FIX`, awaiting either a data patch or a plain retry signal.
+Each step that produces an external side effect registers a compensation **before** it executes. Registrations go onto a LIFO stack via `unshift()`. When the forward pipeline aborts — a `RollbackRequired` failure from an activity, a `cancelApplication` signal, or cancellation of the agent child workflow — the catch block unwinds the stack, running each compensation through the same `recoverableStep` wrapper. A compensation that fails (e.g. vendor outage) enters `ROLLBACK_PENDING_FIX`, awaiting either a data patch or a plain retry signal.
 
 Which steps compensate:
 
@@ -52,14 +52,19 @@ Compensations are **idempotent** — registering before execution means they may
 
 After the compensation loop, a `notifyApplicantCancelled` activity runs to tell the customer the application was withdrawn. It runs through the same recoverable wrapper so a transient email outage pauses with `ROLLBACK_PENDING_FIX` rather than leaving the applicant uninformed.
 
+The entire unwind block is wrapped in `CancellationScope.nonCancellable(...)`. If the parent workflow itself receives a Temporal cancellation mid-saga, the compensations still run to completion instead of being aborted — otherwise credit/appraisal/underwriting holds would stay stuck.
+
 ## Agentic AI Underwriter
 
-After `underwrite` passes its deterministic DTI/OFAC checks, the parent workflow launches `underwritingAgentWorkflow` as a **child workflow**:
+After `underwrite` passes its deterministic DTI/OFAC checks, the parent workflow launches `underwritingAgentWorkflow` as a **child workflow** inside a cancellable scope:
 
 ```typescript
-agentRecommendation = await executeChild(underwritingAgentWorkflow, {
-  workflowId: `${app.applicationId}-agent`,
-  args: [{ application, creditScore }],
+agentRecommendation = await CancellationScope.cancellable(async () => {
+  agentScope = CancellationScope.current();
+  return executeChild(underwritingAgentWorkflow, {
+    workflowId: `${app.applicationId}-agent`,
+    args: [{ application, creditScore }],
+  });
 });
 ```
 
@@ -69,13 +74,20 @@ Inside the child, the workflow drives a tool-call loop — **not** Vercel AI SDK
 
 1. **LLM activity** (`callAgentLLM`) — wraps `generateText` from the Vercel AI SDK with `maxSteps: 1` and `temperature: 0`, returning the model's tool calls instead of auto-executing them. Uses Temporal's default retry policy (unlimited attempts with exponential backoff) so transient Ollama hiccups — model load stalls, network blips, container restarts — recover automatically. Tradeoff: LLM calls aren't idempotent, so a retry after a late timeout may produce slightly different tool calls than the first attempt would have.
 2. **Tool activities** — the workflow dispatches each named tool to its own activity. Three mock read-only tools drive the demo: `lookupFullCreditReport`, `checkComplianceWatchlist`, `getPropertyComparables`.
-3. **Terminal tool** — when the model calls `submitRecommendation(decision, confidence, rationale)`, the workflow returns a structured `AgentRecommendation`.
+3. **Termination** — the model has no terminal tool. When it stops emitting tool calls and replies with plain text, the workflow parses a `DECISION: / CONFIDENCE: / RATIONALE:` block out of the reply and returns a structured `AgentRecommendation`. This matches what small models actually do reliably; forcing a `submitRecommendation` tool call was unreliable on `qwen2.5:1.5b`.
+
+### Cancellation
+
+The agent child can be cancelled in two ways and both reach the same end state — saga unwind in the parent:
+
+- **Operator cancels the child directly** (e.g. `temporal workflow cancel --workflow-id LOAN-001-<batch>-agent`). The parent's `executeChild` throws, `isCancellation(err)` catches it, and the parent rethrows to its outer catch block which runs the saga compensations.
+- **Operator sends `cancelApplication` to the parent** while the agent is mid-flight. The signal handler calls `agentScope?.cancel()`, propagating cancellation *down* into the child. The child terminates, `executeChild` throws `CancelledFailure`, and the same path runs. Without the cancellable scope, the parent would have to wait for the agent to complete naturally before noticing the flag.
 
 Guardrails:
 
 - `MAX_TURNS = 15` hard cap → ESCALATE if the model gets stuck looping.
 - Unknown tool names are fed back as a structured error so the model can self-correct.
-- If Ollama is unreachable, the parent workflow catches the child failure and records an `ESCALATE` recommendation — the human approver still sees something meaningful.
+- If Ollama is unreachable, the parent workflow catches the child failure and records an `ESCALATE` recommendation — the human approver still sees something meaningful. Cancellations are distinguished from other child failures via `isCancellation(err)`.
 
 The recommendation is surfaced on both the dashboard modal and the approval page, including the full tool-call trace.
 

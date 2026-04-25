@@ -41,24 +41,55 @@ const AGENT_TOOL_SCHEMAS = {
 export async function callAgentLLM(params: {
   messages: AgentMessage[];
 }): Promise<AgentLLMResponse> {
-  const result = await generateText({
-    model: ollama(AGENT_MODEL),
-    messages: params.messages as CoreMessage[],
-    tools: AGENT_TOOL_SCHEMAS,
-    // maxSteps: 1 — prevent Vercel from auto-looping; the workflow drives the loop
-    maxSteps: 1,
-    temperature: 0,
-  });
-  return {
-    text: result.text ?? '',
-    toolCalls: result.toolCalls.map((tc) => ({
-      toolCallId: tc.toolCallId,
-      toolName: tc.toolName,
-      args: tc.args as Record<string, unknown>,
-    })),
-    finishReason: result.finishReason,
-    model: AGENT_MODEL,
-  };
+  try {
+    const result = await generateText({
+      model: ollama(AGENT_MODEL),
+      messages: params.messages as CoreMessage[],
+      tools: AGENT_TOOL_SCHEMAS,
+      // maxSteps: 1 — prevent Vercel from auto-looping; the workflow drives the loop
+      maxSteps: 1,
+      temperature: 0,
+    });
+    return {
+      text: result.text ?? '',
+      toolCalls: result.toolCalls.map((tc) => ({
+        toolCallId: tc.toolCallId,
+        toolName: tc.toolName,
+        args: tc.args as Record<string, unknown>,
+      })),
+      finishReason: result.finishReason,
+      model: AGENT_MODEL,
+    };
+  } catch (err: any) {
+    // Small models (qwen2.5:1.5b) sometimes emit malformed tool calls — e.g. omit a
+    // required arg. The Vercel AI SDK throws InvalidToolArgumentsError before returning.
+    // Catch it, return the call as a validationError, and let the workflow feed the
+    // Zod message back to the model so it can self-correct on the next turn. Without
+    // this, the activity would fail and Temporal would retry the same prompt under
+    // temperature: 0 — same broken call, same failure, until startToCloseTimeout.
+    if (err?.name === 'AI_InvalidToolArgumentsError') {
+      let parsedArgs: Record<string, unknown> = {};
+      try {
+        parsedArgs =
+          typeof err.toolArgs === 'string' ? JSON.parse(err.toolArgs) : err.toolArgs ?? {};
+      } catch {
+        parsedArgs = { __raw: String(err.toolArgs ?? '') };
+      }
+      return {
+        text: '',
+        toolCalls: [],
+        finishReason: 'tool-call-validation-failed',
+        model: AGENT_MODEL,
+        validationError: {
+          toolCallId: err.toolCallId ?? `invalid-${Date.now()}`,
+          toolName: err.toolName ?? 'unknown',
+          args: parsedArgs,
+          message: err.message ?? String(err),
+        },
+      };
+    }
+    throw err;
+  }
 }
 
 // ---------- Mock tool implementations ----------
