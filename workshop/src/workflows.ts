@@ -4,8 +4,10 @@ import {
   defineQuery,
   setHandler,
   condition,
+  executeChild,
   log,
 } from '@temporalio/workflow';
+import { underwritingAgentWorkflow } from './agent-workflow';
 import type * as activities from './activities';
 import type {
   CancelRequest,
@@ -121,6 +123,34 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
   state.completedActivities.push('underwrite');
   setStatus('UNDERWRITTEN');
 
+  // --- Module 4: the AI underwriting agent ------------------------------------
+  // Run the agent as a CHILD workflow. It gets its own workflow id ("<id>-agent")
+  // and its own history in the UI, so its tool-call loop is independently
+  // inspectable. The recommendation comes back as a plain return value.
+  setStatus('AGENT_REVIEWING');
+  try {
+    state.agentRecommendation = await executeChild(underwritingAgentWorkflow, {
+      workflowId: `${app.applicationId}-agent`,
+      args: [{ application: { ...app }, creditScore: 750 }],
+    });
+    log.info(`Agent recommended ${state.agentRecommendation.decision}`);
+  } catch (err: any) {
+    // Agent unavailable (e.g. Ollama down) — record ESCALATE so the human
+    // approver still sees something meaningful instead of a crash.
+    log.warn(`Agent child failed: ${err.message || err}`);
+    state.agentRecommendation = {
+      decision: 'ESCALATE',
+      confidence: 0,
+      rationale: `Agent unavailable: ${err.message || String(err)}. Human review required.`,
+      toolCallTrace: [],
+      turns: 0,
+      model: 'unavailable',
+      completedAt: new Date().toISOString(),
+    };
+  }
+  state.completedActivities.push('agentReview');
+  setStatus('UNDERWRITTEN');
+
   // --- Module 2: human-in-the-loop approval -----------------------------------
   setStatus('PENDING_APPROVAL');
   await condition(() => approved || rejected);
@@ -131,8 +161,6 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     state.completedActivities.push('humanApproval');
     setStatus('APPROVED');
   }
-
-  // TODO(module-4): run the AI underwriting agent as a child workflow before approval.
 
   return state;
 }
