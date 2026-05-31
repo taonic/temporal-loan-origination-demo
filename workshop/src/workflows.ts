@@ -7,7 +7,13 @@ import {
   log,
 } from '@temporalio/workflow';
 import type * as activities from './activities';
-import type { CancelRequest, LoanApplication, LoanState } from './models';
+import type {
+  CancelRequest,
+  LoanApplication,
+  LoanState,
+  LoanStatus,
+  RetryUpdate,
+} from './models';
 
 // Re-export the agent child workflow so the worker registers it (used in Module 4).
 export { underwritingAgentWorkflow } from './agent-workflow';
@@ -16,12 +22,11 @@ const { verifyIncome, runCreditCheck, underwrite } = proxyActivities<typeof acti
   startToCloseTimeout: '10 seconds',
 });
 
-// --- Module 2: signals & queries --------------------------------------------
-// A query is a read-only peek at state. A signal is an async message that drives
-// the workflow forward. Define them once, attach handlers inside the workflow.
 export const getStateQuery = defineQuery<LoanState>('getState');
 export const approvalSignal = defineSignal<[]>('approveApplication');
 export const rejectSignal = defineSignal<[CancelRequest]>('rejectApplication');
+// --- Module 3: the retry signal carries a field patch to fix bad data --------
+export const retrySignal = defineSignal<[RetryUpdate]>('retry');
 
 export async function homeLoanWorkflow(application: LoanApplication): Promise<LoanState> {
   const state: LoanState = {
@@ -37,52 +42,95 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
 
   const app = state.application;
 
-  // Control-flow flags driven by signals — not part of the persisted loan state.
   let approved = false;
   let rejected = false;
+  let retryRequested = false;
 
-  // The query handler returns a defensive snapshot of state on demand.
   setHandler(getStateQuery, () => ({ ...state }));
-
   setHandler(approvalSignal, () => {
     approved = true;
-    log.info('Approval signal received');
   });
-
   setHandler(rejectSignal, (req: CancelRequest) => {
     rejected = true;
     state.rejectReason = req.reason || 'No reason provided';
-    log.info(`Reject signal received: ${state.rejectReason}`);
   });
 
-  // --- Module 1: the durable pipeline -----------------------------------------
-  await verifyIncome(app.applicantName, app.employerName, app.annualIncome);
+  // The retry signal patches one field on the application, then unblocks the
+  // recoverable step that's currently waiting.
+  setHandler(retrySignal, (update: RetryUpdate) => {
+    if (update.key) {
+      const key = update.key as keyof LoanApplication;
+      const oldValue = String(app[key]);
+      if (key === 'annualIncome' || key === 'loanAmount' || key === 'downPayment') {
+        (app[key] as number) = parseFloat(update.value ?? '0');
+      } else {
+        (app[key] as string) = update.value ?? '';
+      }
+      state.fixHistory.push({
+        activity: state.failedActivity,
+        field: key,
+        oldValue,
+        newValue: update.value ?? '',
+        error: state.failureMessage,
+      });
+      log.info(`Fix received ${key}: ${oldValue} -> ${update.value}`);
+    }
+    retryRequested = true;
+  });
+
+  const setStatus = (status: LoanStatus, activity = '', message = '') => {
+    state.status = status;
+    state.failedActivity = activity;
+    state.failureMessage = message;
+  };
+
+  // --- Module 3: the recoverable wrapper --------------------------------------
+  // Run an activity; if it throws (bad data), pause at PENDING_FIX and wait for a
+  // `retry` signal to patch the data, then loop and try again. The loan never
+  // fails outright — a human just nudges it forward.
+  const recoverableStep = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+    while (true) {
+      try {
+        return await fn();
+      } catch (e: any) {
+        const message = e.cause?.message || e.message || String(e);
+        log.warn(`${name} failed: ${message}`);
+        setStatus('PENDING_FIX', name, message);
+        retryRequested = false;
+        await condition(() => retryRequested);
+        setStatus('STARTED');
+        log.info(`Retrying ${name}`);
+      }
+    }
+  };
+
+  // --- The durable pipeline, now recoverable ----------------------------------
+  await recoverableStep('verifyIncome', () =>
+    verifyIncome(app.applicantName, app.employerName, app.annualIncome)
+  );
   state.completedActivities.push('verifyIncome');
-  state.status = 'INCOME_VERIFIED';
+  setStatus('INCOME_VERIFIED');
 
-  await runCreditCheck(app.applicantName, app.ssn);
+  await recoverableStep('runCreditCheck', () => runCreditCheck(app.applicantName, app.ssn));
   state.completedActivities.push('runCreditCheck');
-  state.status = 'CREDIT_CHECKED';
+  setStatus('CREDIT_CHECKED');
 
-  await underwrite(app.applicantName, app.annualIncome, app.loanAmount, app.downPayment);
+  await recoverableStep('underwrite', () =>
+    underwrite(app.applicantName, app.annualIncome, app.loanAmount, app.downPayment)
+  );
   state.completedActivities.push('underwrite');
-  state.status = 'UNDERWRITTEN';
+  setStatus('UNDERWRITTEN');
 
   // --- Module 2: human-in-the-loop approval -----------------------------------
-  // Block until an operator signals. `condition` suspends the workflow (durably,
-  // for as long as it takes — minutes or months) until the predicate is true.
-  state.status = 'PENDING_APPROVAL';
+  setStatus('PENDING_APPROVAL');
   await condition(() => approved || rejected);
 
   if (rejected) {
-    state.status = 'REJECTED';
+    setStatus('REJECTED');
   } else {
     state.completedActivities.push('humanApproval');
-    state.status = 'APPROVED';
+    setStatus('APPROVED');
   }
-
-  // TODO(module-3): wrap each activity in a recoverableStep() that pauses on
-  //                 failure and waits for a `retry` signal to patch + retry.
 
   // TODO(module-4): run the AI underwriting agent as a child workflow before approval.
 
