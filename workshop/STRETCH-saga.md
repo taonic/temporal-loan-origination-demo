@@ -2,6 +2,9 @@
 
 > Do this only if you finished Modules 1–4 with time to spare. It introduces one
 > new idea: **undoing** work that already happened.
+>
+> Work on top of the Module 4 solution — e.g. copy
+> `module-4-ai-agent/solution/src` into a new `stretch-saga/` folder and edit there.
 
 ## The problem
 
