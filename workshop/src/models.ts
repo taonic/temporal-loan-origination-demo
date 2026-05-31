@@ -52,6 +52,11 @@ export interface RetryUpdate {
   value?: string;
 }
 
+// Payload of the reject signal (Module 2).
+export interface CancelRequest {
+  reason: string;
+}
+
 // ---------- Agent types (Module 4) ----------
 
 export type AgentDecision = 'APPROVE' | 'DECLINE' | 'ESCALATE';
