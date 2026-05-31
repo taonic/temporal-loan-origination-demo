@@ -27,21 +27,21 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
 
   const app = state.application;
 
-  // ===========================================================================
-  // TODO(module-1): run the three activities in sequence.
-  //
-  //   1. await verifyIncome(app.applicantName, app.employerName, app.annualIncome)
-  //      then: state.completedActivities.push('verifyIncome');
-  //            state.status = 'INCOME_VERIFIED';
-  //   2. await runCreditCheck(app.applicantName, app.ssn)
-  //            -> 'runCreditCheck' / 'CREDIT_CHECKED'
-  //   3. await underwrite(app.applicantName, app.annualIncome, app.loanAmount, app.downPayment)
-  //            -> 'underwrite' / 'UNDERWRITTEN'
-  //
-  // Start the worker, start a workflow, and watch all three run in the Temporal
-  // UI at http://localhost:8233. Then kill and restart the worker mid-run to see
-  // the workflow resume exactly where it left off.
-  // ===========================================================================
+  // --- Module 1: the durable pipeline -----------------------------------------
+  // Each `await` is a durable checkpoint. If the worker dies between steps, a
+  // restarted worker replays history and resumes from exactly here.
+
+  await verifyIncome(app.applicantName, app.employerName, app.annualIncome);
+  state.completedActivities.push('verifyIncome');
+  state.status = 'INCOME_VERIFIED';
+
+  await runCreditCheck(app.applicantName, app.ssn);
+  state.completedActivities.push('runCreditCheck');
+  state.status = 'CREDIT_CHECKED';
+
+  await underwrite(app.applicantName, app.annualIncome, app.loanAmount, app.downPayment);
+  state.completedActivities.push('underwrite');
+  state.status = 'UNDERWRITTEN';
 
   // TODO(module-2): define a getState query + approve/reject signals, then after
   //                 underwriting block on PENDING_APPROVAL until one arrives.
