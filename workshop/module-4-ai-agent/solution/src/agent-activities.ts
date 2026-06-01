@@ -1,4 +1,4 @@
-// Activities used by the AI agent in Module 4. Already written for you.
+// Activities used by the AI agent. Already written for you.
 //
 //  - callAgentLLM  : one call to the local Ollama model (the non-deterministic
 //                    bit — which is exactly why it must be an activity).

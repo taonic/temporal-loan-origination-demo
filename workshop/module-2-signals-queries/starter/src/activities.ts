@@ -4,9 +4,8 @@ import { ApplicationFailure } from '@temporalio/activity';
 // calls, DB writes, reading the clock). Temporal records each activity's result
 // in history so the workflow can be replayed deterministically.
 //
-// These three are already written for you. Read them, but you won't change them.
-// Each one validates its inputs and throws ApplicationFailure.nonRetryable() on
-// bad data — that's what drives the recoverable pattern in Module 3.
+// These three are already written for you. Each one validates its inputs and
+// throws ApplicationFailure.nonRetryable() on bad data.
 
 // A small delay so the pipeline is observable in the Temporal UI.
 const SIMULATED_PROCESSING_MS = 2500;
@@ -34,8 +33,7 @@ export async function verifyIncome(
 
 export async function runCreditCheck(applicantName: string, ssn: string): Promise<string> {
   await simulateProcessing();
-  // A malformed SSN can't be used to pull a credit report. In Module 3 you'll
-  // fix this from the outside with a `retry` signal instead of failing the loan.
+  // A malformed SSN can't be used to pull a credit report.
   if (ssn === '000-00-0000' || ssn.length < 11) {
     throw ApplicationFailure.nonRetryable(
       `Invalid SSN "${ssn}" for ${applicantName} — cannot pull credit report`

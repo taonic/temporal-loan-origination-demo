@@ -3,13 +3,9 @@
 //
 // You don't need to edit this file. Just remember: after changing any workflow
 // or activity code, stop this process (Ctrl-C) and start it again.
-//
-//   npx ts-node workshop/src/worker.ts
 
 import { NativeConnection, Worker } from '@temporalio/worker';
 import * as activities from './activities';
-// agent-activities is only used from Module 4 onward; importing it early is harmless.
-import * as agentActivities from './agent-activities';
 
 export const TASK_QUEUE = 'loan-workshop';
 
@@ -21,7 +17,7 @@ async function run() {
     namespace: 'default',
     taskQueue: TASK_QUEUE,
     workflowsPath: require.resolve('./workflows'),
-    activities: { ...activities, ...agentActivities },
+    activities: { ...activities },
   });
 
   console.log(`Worker started on task queue "${TASK_QUEUE}". Ctrl-C to exit.`);

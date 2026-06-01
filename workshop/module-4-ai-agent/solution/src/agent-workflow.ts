@@ -95,30 +95,6 @@ export async function underwritingAgentWorkflow(input: AgentInput): Promise<Agen
   const toolCallTrace: AgentToolCall[] = [];
   let model = '';
 
-  // ===========================================================================
-  // TODO(module-4): the tool-call loop.
-  //
-  //   for (let turn = 1; turn <= MAX_TURNS; turn++) {
-  //     1. const resp = await callAgentLLM({ messages });  model = resp.model;
-  //
-  //     2. Record the assistant's turn in `messages` (its text + any toolCalls):
-  //        build an AgentMessageContent[] and push { role: 'assistant', content }.
-  //
-  //     3. If resp.toolCalls.length === 0 the model is DONE:
-  //          const parsed = parseRecommendation(resp.text);
-  //          return { ...parsed, toolCallTrace, turns: turn, model, completedAt: ... }
-  //          (if parsed is null, return an ESCALATE recommendation instead).
-  //
-  //     4. Otherwise dispatch each tool call, collect a 'tool-result' part per
-  //        call, push { role: 'tool', content: results }, and record each in
-  //        toolCallTrace. Then let the loop continue to the next turn.
-  //   }
-  //
-  // After the loop, return an ESCALATE recommendation (hit MAX_TURNS).
-  //
-  // The reference solution is below — try it yourself first.
-  // ===========================================================================
-
   for (let turn = 1; turn <= MAX_TURNS; turn++) {
     log.info(`Agent turn ${turn}/${MAX_TURNS}`);
     const resp = await callAgentLLM({ messages });

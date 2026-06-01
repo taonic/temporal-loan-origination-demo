@@ -17,7 +17,7 @@ import type {
   RetryUpdate,
 } from './models';
 
-// Re-export the agent child workflow so the worker registers it (used in Module 4).
+// Re-export the agent child workflow so the worker registers it.
 export { underwritingAgentWorkflow } from './agent-workflow';
 
 const { verifyIncome, runCreditCheck, underwrite } = proxyActivities<typeof activities>({
@@ -27,7 +27,6 @@ const { verifyIncome, runCreditCheck, underwrite } = proxyActivities<typeof acti
 export const getStateQuery = defineQuery<LoanState>('getState');
 export const approvalSignal = defineSignal<[]>('approveApplication');
 export const rejectSignal = defineSignal<[CancelRequest]>('rejectApplication');
-// --- Module 3: the retry signal carries a field patch to fix bad data --------
 export const retrySignal = defineSignal<[RetryUpdate]>('retry');
 
 export async function homeLoanWorkflow(application: LoanApplication): Promise<LoanState> {
@@ -56,9 +55,6 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     rejected = true;
     state.rejectReason = req.reason || 'No reason provided';
   });
-
-  // The retry signal patches one field on the application, then unblocks the
-  // recoverable step that's currently waiting.
   setHandler(retrySignal, (update: RetryUpdate) => {
     if (update.key) {
       const key = update.key as keyof LoanApplication;
@@ -86,10 +82,6 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     state.failureMessage = message;
   };
 
-  // --- Module 3: the recoverable wrapper --------------------------------------
-  // Run an activity; if it throws (bad data), pause at PENDING_FIX and wait for a
-  // `retry` signal to patch the data, then loop and try again. The loan never
-  // fails outright — a human just nudges it forward.
   const recoverableStep = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
     while (true) {
       try {
@@ -106,7 +98,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     }
   };
 
-  // --- The durable pipeline, now recoverable ----------------------------------
+  // The durable, recoverable pipeline.
   await recoverableStep('verifyIncome', () =>
     verifyIncome(app.applicantName, app.employerName, app.annualIncome)
   );
@@ -123,10 +115,9 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
   state.completedActivities.push('underwrite');
   setStatus('UNDERWRITTEN');
 
-  // --- Module 4: the AI underwriting agent ------------------------------------
-  // Run the agent as a CHILD workflow. It gets its own workflow id ("<id>-agent")
-  // and its own history in the UI, so its tool-call loop is independently
-  // inspectable. The recommendation comes back as a plain return value.
+  // The AI underwriting agent runs as a CHILD workflow. It gets its own workflow
+  // id ("<id>-agent") and its own history in the UI, so its tool-call loop is
+  // independently inspectable. The recommendation comes back as a return value.
   setStatus('AGENT_REVIEWING');
   try {
     state.agentRecommendation = await executeChild(underwritingAgentWorkflow, {
@@ -151,7 +142,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
   state.completedActivities.push('agentReview');
   setStatus('UNDERWRITTEN');
 
-  // --- Module 2: human-in-the-loop approval -----------------------------------
+  // Human-in-the-loop approval.
   setStatus('PENDING_APPROVAL');
   await condition(() => approved || rejected);
 

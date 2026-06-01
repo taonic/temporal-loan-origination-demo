@@ -1,5 +1,4 @@
-// Shared types for the workshop. You don't edit this file.
-// Some types (the Agent* ones) are only used starting in Module 4.
+// Shared types. You don't edit this file.
 
 export interface LoanApplication {
   applicationId: string;
@@ -24,7 +23,7 @@ export type LoanStatus =
   | 'REJECTED'
   | 'PENDING_FIX';
 
-// A record of one human fix applied via the retry signal (Module 3).
+// A record of one human fix applied via the retry signal.
 export interface FixEntry {
   activity: string;
   field: string;
@@ -46,18 +45,18 @@ export interface LoanState {
   agentRecommendation?: AgentRecommendation;
 }
 
-// Payload of the `retry` signal (Module 3): which field to patch and its new value.
+// Payload of the `retry` signal: which field to patch and its new value.
 export interface RetryUpdate {
   key?: keyof LoanApplication | '';
   value?: string;
 }
 
-// Payload of the reject signal (Module 2).
+// Payload of the reject signal.
 export interface CancelRequest {
   reason: string;
 }
 
-// ---------- Agent types (Module 4) ----------
+// ---------- Agent types ----------
 
 export type AgentDecision = 'APPROVE' | 'DECLINE' | 'ESCALATE';
 

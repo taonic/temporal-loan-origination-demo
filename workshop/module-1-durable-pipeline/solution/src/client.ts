@@ -1,7 +1,7 @@
 // Starts a loan-application workflow. Pick a scenario with an argument:
 //
-//   npx ts-node workshop/src/client.ts            # clean application (default)
-//   npx ts-node workshop/src/client.ts bad-ssn    # credit check will fail (Module 3)
+//   npx ts-node <this-dir>/client.ts            # clean application (default)
+//   npx ts-node <this-dir>/client.ts bad-ssn    # credit check will fail
 //
 // You don't need to edit this file.
 
