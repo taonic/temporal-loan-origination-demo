@@ -95,6 +95,10 @@ export async function callAgentLLM(params: {
 // ---------- Mock tool implementations ----------
 // Deterministic from inputs so the demo behaves predictably without a real DB.
 
+const SIMULATED_PROCESSING_MS = 2000;
+const simulateProcessing = () =>
+  new Promise<void>((resolve) => setTimeout(resolve, SIMULATED_PROCESSING_MS));
+
 function hashSeed(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
@@ -105,6 +109,7 @@ export async function lookupFullCreditReport(
   applicationId: string,
   ssn: string
 ): Promise<string> {
+  await simulateProcessing();
   const seed = hashSeed(ssn);
   const delinquencies = seed % 4; // 0–3 past delinquencies
   const inquiries = (seed >> 2) % 6; // 0–5 recent inquiries
@@ -124,6 +129,7 @@ export async function checkComplianceWatchlist(
   applicantName: string,
   ssn: string
 ): Promise<string> {
+  await simulateProcessing();
   // SSNs starting 999 already flag in underwrite() — mirror that logic here
   // so the agent sees the same compliance rule when it asks.
   if (ssn.startsWith('999')) {
@@ -145,6 +151,7 @@ export async function getPropertyComparables(
   propertyId: string,
   propertyAddress: string
 ): Promise<string> {
+  await simulateProcessing();
   const seed = hashSeed(propertyId + propertyAddress);
   const medianComparable = 250000 + (seed % 500000); // $250k – $750k
   const trendPct = ((seed >> 8) % 20) - 5; // -5% .. +14% YoY

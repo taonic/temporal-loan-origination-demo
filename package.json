@@ -23,14 +23,15 @@
     ]
   },
   "dependencies": {
-    "@temporalio/activity": "^1.13.0",
-    "@temporalio/client": "^1.13.0",
-    "@temporalio/worker": "^1.13.0",
-    "@temporalio/workflow": "^1.13.0",
+    "@temporalio/activity": "^1.16.1",
+    "@temporalio/client": "^1.16.1",
+    "@temporalio/worker": "^1.16.1",
+    "@temporalio/workflow": "^1.16.1",
     "@types/express": "^5.0.3",
     "ai": "^4.3.19",
     "express": "^4.21.2",
     "ollama-ai-provider": "^1.2.0",
+    "uuid": "^14.0.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

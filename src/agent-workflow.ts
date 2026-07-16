@@ -17,7 +17,7 @@ import type {
 const { callAgentLLM } = proxyActivities<typeof agentActivities>({
   // Generous per-attempt timeout — first Ollama call pays model-load cost;
   // subsequent turns on a warm model are much faster.
-  startToCloseTimeout: '3 minutes',
+  startToCloseTimeout: '30 seconds',
 });
 
 // Tool activities are deterministic mock lookups — standard retry is fine.

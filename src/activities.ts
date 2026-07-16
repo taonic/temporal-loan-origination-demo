@@ -1,5 +1,10 @@
 import { ApplicationFailure } from '@temporalio/activity';
 
+// Simulates real-world processing latency so the demo pipeline is observable in the UI.
+const SIMULATED_PROCESSING_MS = 2500;
+const simulateProcessing = () =>
+  new Promise<void>((resolve) => setTimeout(resolve, SIMULATED_PROCESSING_MS));
+
 // ---------- Forward activities ----------
 
 export async function verifyIncome(
@@ -7,6 +12,7 @@ export async function verifyIncome(
   employerName: string,
   annualIncome: number
 ): Promise<string> {
+  await simulateProcessing();
   if (employerName === 'UNKNOWN_EMPLOYER') {
     throw ApplicationFailure.nonRetryable(
       `Employer "${employerName}" not found in verification database for ${applicantName}`
@@ -24,6 +30,7 @@ export async function runCreditCheck(
   applicantName: string,
   ssn: string
 ): Promise<string> {
+  await simulateProcessing();
   if (ssn === '000-00-0000' || ssn.length < 11) {
     throw ApplicationFailure.nonRetryable(
       `Invalid SSN "${ssn}" for ${applicantName} — cannot pull credit report`
@@ -36,6 +43,7 @@ export async function orderAppraisal(
   propertyAddress: string,
   loanAmount: number
 ): Promise<string> {
+  await simulateProcessing();
   if (propertyAddress === '' || propertyAddress === 'INVALID_ADDRESS') {
     throw ApplicationFailure.nonRetryable(
       `Cannot order appraisal — invalid property address: "${propertyAddress}"`
@@ -51,6 +59,7 @@ export async function underwrite(
   loanAmount: number,
   downPayment: number
 ): Promise<string> {
+  await simulateProcessing();
   // Compliance block — SSNs starting with 999 simulate OFAC / sanctions hit.
   // Non-retryable with type 'RollbackRequired' tells the workflow to unwind the saga
   // instead of pausing for a human fix. There is no data correction that resolves this.
@@ -78,6 +87,7 @@ export async function withdrawCreditInquiry(
   applicationId: string,
   ssn: string
 ): Promise<string> {
+  await simulateProcessing();
   // Bureau APIs accept withdrawal requests multiple times — repeat calls are no-ops.
   return `Credit inquiry withdrawal filed for ${applicationId} (SSN ...${ssn.slice(-4)})`;
 }
@@ -86,6 +96,7 @@ export async function cancelAppraisal(
   applicationId: string,
   propertyAddress: string
 ): Promise<string> {
+  await simulateProcessing();
   // Simulated external vendor outage. The operator can patch `propertyAddress`
   // (removing the APPRAISER_OFFLINE marker) via a retry signal to unblock.
   if (propertyAddress.includes('APPRAISER_OFFLINE')) {
@@ -100,6 +111,7 @@ export async function releaseUnderwritingReservation(
   applicationId: string,
   loanAmount: number
 ): Promise<string> {
+  await simulateProcessing();
   return `Released $${loanAmount} underwriting capacity for ${applicationId}`;
 }
 
@@ -110,5 +122,6 @@ export async function notifyApplicantCancelled(
   applicantName: string,
   reason: string
 ): Promise<string> {
+  await simulateProcessing();
   return `Cancellation notice sent to ${applicantName} for ${applicationId}: "${reason}"`;
 }

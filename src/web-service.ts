@@ -1,8 +1,63 @@
 import express from 'express';
+import http from 'http';
+import net from 'net';
 import { Connection, Client } from '@temporalio/client';
 import { defineSearchAttributeKey } from '@temporalio/common';
 import { homeLoanWorkflow, retrySignal, cancelSignal, approvalSignal, getStateQuery } from './workflows';
 import type { LoanApplication, RetryUpdate, LoanState, CancelRequest } from './models';
+
+// Reverse-proxies the Temporal Web UI (8233) on a local port with X-Frame-Options
+// and CSP stripped so the dashboard can embed it in an iframe.
+function startTemporalUiProxy(targetHost: string, targetPort: number, listenPort: number) {
+  const server = http.createServer((req, res) => {
+    const proxyReq = http.request(
+      {
+        hostname: targetHost,
+        port: targetPort,
+        path: req.url,
+        method: req.method,
+        headers: { ...req.headers, host: `${targetHost}:${targetPort}` },
+      },
+      (proxyRes) => {
+        const headers = { ...proxyRes.headers };
+        delete headers['x-frame-options'];
+        delete headers['content-security-policy'];
+        delete headers['content-security-policy-report-only'];
+        res.writeHead(proxyRes.statusCode || 502, headers);
+        proxyRes.pipe(res);
+      },
+    );
+    proxyReq.on('error', (err) => {
+      res.writeHead(502, { 'content-type': 'text/plain' });
+      res.end(`Temporal UI proxy error: ${err.message}`);
+    });
+    req.pipe(proxyReq);
+  });
+
+  server.on('upgrade', (req, clientSocket, head) => {
+    const upstream = net.connect(targetPort, targetHost, () => {
+      const lines = [`${req.method} ${req.url} HTTP/1.1`];
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (Array.isArray(v)) v.forEach((vv) => lines.push(`${k}: ${vv}`));
+        else if (v !== undefined) lines.push(`${k}: ${v}`);
+      }
+      upstream.write(lines.join('\r\n') + '\r\n\r\n');
+      if (head && head.length) upstream.write(head);
+      upstream.pipe(clientSocket);
+      clientSocket.pipe(upstream);
+    });
+    const close = () => {
+      upstream.destroy();
+      clientSocket.destroy();
+    };
+    upstream.on('error', close);
+    clientSocket.on('error', close);
+  });
+
+  server.listen(listenPort, () => {
+    console.log(`Temporal UI proxy: http://localhost:${listenPort} -> http://${targetHost}:${targetPort}`);
+  });
+}
 
 const LoanStatusKey = defineSearchAttributeKey('LoanStatus', 'KEYWORD');
 const FailedActivityKey = defineSearchAttributeKey('FailedActivity', 'KEYWORD');
@@ -166,6 +221,8 @@ async function run() {
   app.listen(3000, () => {
     console.log('Loan Origination Demo UI running on http://localhost:3000');
   });
+
+  startTemporalUiProxy('localhost', 8233, 3001);
 }
 
 run().catch((err) => {

@@ -529,7 +529,10 @@
       font-weight: 600;
       z-index: 100;
       animation: slideIn 0.3s ease;
+      transition: right 0.2s ease;
     }
+    body.pane-open .toast { right: calc(var(--pane-width, 640px) + 24px); }
+    body.pane-resizing .toast { transition: none !important; }
     @keyframes slideIn {
       from { transform: translateY(20px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
@@ -707,6 +710,74 @@
       line-height: 1;
     }
     .btn-close:hover { color: var(--temporal-text); }
+
+    /* Push the rest of the app left when the pane is open */
+    body { transition: padding-right 0.2s ease; }
+    body.pane-open { padding-right: var(--pane-width, 640px); }
+    body.pane-open .modal-overlay { right: var(--pane-width, 640px); }
+    .modal-overlay { transition: right 0.2s ease; }
+    body.pane-resizing,
+    body.pane-resizing .modal-overlay { transition: none !important; }
+
+    /* Temporal UI right-side pane */
+    .temporal-pane {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--temporal-dark);
+      border-left: 1px solid var(--temporal-border);
+      z-index: 70;
+      display: flex;
+      flex-direction: column;
+      min-width: 320px;
+      max-width: 95vw;
+    }
+    .temporal-pane-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--temporal-card);
+      border-bottom: 1px solid var(--temporal-border);
+      font-size: 13px;
+      color: var(--temporal-text);
+      flex-shrink: 0;
+    }
+    .temporal-pane-title {
+      font-weight: 600;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .temporal-pane-header a {
+      color: var(--temporal-primary-light);
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .temporal-pane iframe {
+      flex: 1;
+      width: 100%;
+      border: 0;
+      background: #fff;
+    }
+    .temporal-pane-resize {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: -4px;
+      width: 8px;
+      cursor: ew-resize;
+      z-index: 1;
+      background: var(--temporal-border);
+    }
+    .temporal-pane-resize:hover,
+    .temporal-pane.resizing .temporal-pane-resize {
+      background: var(--temporal-primary);
+    }
+    body.pane-resizing { cursor: ew-resize; user-select: none; }
+    body.pane-resizing iframe { pointer-events: none; }
   </style>
 </head>
 <body>
@@ -913,10 +984,10 @@
             <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
               <span class="mono" style="font-size: 13px; color: #fff;">{{ selected.workflowId }}</span>
               <a :href="`http://localhost:8233/namespaces/default/workflows/${selected.workflowId}`"
-                 target="_blank" rel="noopener"
-                 style="font-size: 11px; color: var(--temporal-primary-light); text-decoration: none;"
-                 title="Open in Temporal UI">
-                Open in Temporal UI &#8599;
+                 @click.prevent="openTemporalPane(`http://localhost:8233/namespaces/default/workflows/${selected.workflowId}`)"
+                 style="font-size: 11px; color: var(--temporal-primary-light); text-decoration: none; cursor: pointer;"
+                 title="Open in Temporal UI pane">
+                Open in Temporal UI &#8594;
               </a>
             </div>
           </div>
@@ -975,10 +1046,10 @@
               <h4>
                 AI Underwriter Recommendation
                 <a :href="`http://localhost:8233/namespaces/default/workflows/${selected.workflowId}-agent`"
-                   target="_blank" rel="noopener"
-                   style="font-weight: normal; font-size: 11px; color: var(--temporal-indigo); text-decoration: none; margin-left: 8px;"
-                   title="Open child agent workflow in Temporal UI">
-                  {{ selected.workflowId }}-agent &#8599;
+                   @click.prevent="openTemporalPane(`http://localhost:8233/namespaces/default/workflows/${selected.workflowId}-agent`)"
+                   style="font-weight: normal; font-size: 11px; color: var(--temporal-indigo); text-decoration: none; margin-left: 8px; cursor: pointer;"
+                   title="Open child agent workflow in Temporal UI pane">
+                  {{ selected.workflowId }}-agent &#8594;
                 </a>
               </h4>
               <span class="agent-decision" :class="selected.state.agentRecommendation.decision">
@@ -1015,10 +1086,10 @@
               </div>
               <div style="margin-top: 8px;">
                 <a :href="`http://localhost:8233/namespaces/default/workflows/${selected.workflowId}-agent`"
-                   target="_blank" rel="noopener"
-                   style="font-size: 12px; color: var(--temporal-indigo); text-decoration: none;"
-                   title="Open child agent workflow in Temporal UI">
-                  {{ selected.workflowId }}-agent &#8599;
+                   @click.prevent="openTemporalPane(`http://localhost:8233/namespaces/default/workflows/${selected.workflowId}-agent`)"
+                   style="font-size: 12px; color: var(--temporal-indigo); text-decoration: none; cursor: pointer;"
+                   title="Open child agent workflow in Temporal UI pane">
+                  {{ selected.workflowId }}-agent &#8594;
                 </a>
               </div>
             </div>
@@ -1046,9 +1117,10 @@
               The loan has been funded. An operator must approve the application to complete the workflow.
             </div>
             <a :href="`/approve.html?id=${selected.workflowId}`"
-               target="_blank" rel="noopener"
-               class="approval-link">
-              Open Approval Page &#8599;
+               @click.prevent="openTemporalPane(`/approve.html?id=${selected.workflowId}`, 'Approval')"
+               class="approval-link"
+               title="Open approval page in side pane">
+              Open Approval Page &#8594;
             </a>
           </div>
 
@@ -1202,6 +1274,20 @@
       </div>
     </div>
 
+    <!-- Temporal UI side pane -->
+    <div class="temporal-pane"
+         v-if="temporalPaneUrl"
+         :class="{ resizing: paneResizing }"
+         :style="{ width: temporalPaneWidth + 'px' }">
+      <div class="temporal-pane-resize" @mousedown.prevent="startPaneResize"></div>
+      <div class="temporal-pane-header">
+        <span class="temporal-pane-title">{{ paneTitle }}</span>
+        <a :href="temporalPaneUrl" target="_blank" rel="noopener" title="Open in new tab">new tab &#8599;</a>
+        <button class="btn-close" @click="closeTemporalPane" title="Close pane">&times;</button>
+      </div>
+      <iframe :src="temporalPaneIframeUrl"></iframe>
+    </div>
+
     <!-- Toast -->
     <div class="toast" v-if="toast">{{ toast }}</div>
   </div>
@@ -1263,7 +1349,13 @@
             'runCreditCheck',
             'orderAppraisal',
             'underwrite',
-          ]
+          ],
+          temporalPaneUrl: null,
+          paneTitle: 'Temporal UI',
+          temporalPaneWidth: 640,
+          paneResizing: false,
+          paneResizeStartX: 0,
+          paneResizeStartWidth: 0,
         };
       },
       computed: {
@@ -1348,6 +1440,12 @@
           const fa = this.selected?.state?.failedActivity;
           return map[fa] || 'compensation';
         },
+        temporalPaneIframeUrl() {
+          // Browsers block iframes from :8233 (X-Frame-Options / CSP).
+          // The web service proxies Temporal UI on :3001 with those headers stripped.
+          if (!this.temporalPaneUrl) return '';
+          return this.temporalPaneUrl.replace('://localhost:8233', '://localhost:3001');
+        },
       },
       methods: {
         async loadWorkflows() {
@@ -1385,6 +1483,42 @@
           this.selected = null;
           this.cancelFormOpen = false;
           this.cancelInput = '';
+        },
+        applyPaneWidth() {
+          document.documentElement.style.setProperty('--pane-width', this.temporalPaneWidth + 'px');
+        },
+        openTemporalPane(url, title = 'Temporal UI') {
+          this.temporalPaneUrl = url;
+          this.paneTitle = title;
+          this.applyPaneWidth();
+          document.body.classList.add('pane-open');
+        },
+        closeTemporalPane() {
+          this.temporalPaneUrl = null;
+          document.body.classList.remove('pane-open');
+        },
+        startPaneResize(e) {
+          this.paneResizing = true;
+          this.paneResizeStartX = e.clientX;
+          this.paneResizeStartWidth = this.temporalPaneWidth;
+          document.body.classList.add('pane-resizing');
+          document.addEventListener('mousemove', this.onPaneResize);
+          document.addEventListener('mouseup', this.stopPaneResize);
+        },
+        onPaneResize(e) {
+          if (!this.paneResizing) return;
+          const delta = this.paneResizeStartX - e.clientX;
+          const next = this.paneResizeStartWidth + delta;
+          const min = 320;
+          const max = Math.max(min, window.innerWidth - 320);
+          this.temporalPaneWidth = Math.min(max, Math.max(min, next));
+          this.applyPaneWidth();
+        },
+        stopPaneResize() {
+          this.paneResizing = false;
+          document.body.classList.remove('pane-resizing');
+          document.removeEventListener('mousemove', this.onPaneResize);
+          document.removeEventListener('mouseup', this.stopPaneResize);
         },
         async sendFix() {
           // During ROLLBACK_PENDING_FIX, key/value may be empty (pure retry)
@@ -1604,7 +1738,8 @@
         this.pollInterval = setInterval(() => this.loadWorkflows(), 3000);
         window.addEventListener('keydown', this._onKeydown = (e) => {
           if (e.key === 'Escape') {
-            if (this.showNewForm) this.showNewForm = false;
+            if (this.temporalPaneUrl) this.closeTemporalPane();
+            else if (this.showNewForm) this.showNewForm = false;
             else if (this.selected) this.closeDetail();
           }
         });
