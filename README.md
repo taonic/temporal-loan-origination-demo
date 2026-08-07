@@ -11,6 +11,25 @@ Demonstrates four complementary patterns on Temporal:
 
 Inspired by [temporal-training-exercise-typescript/solution7](https://github.com/temporal-sa/temporal-training-exercise-typescript/blob/main/solution7/src/workflow.ts) and the [saga pattern guide](https://taonic.github.io/temporal-design-patterns/saga-pattern.html).
 
+## Quick start
+
+Needs Node.js 18+, the [Temporal CLI](https://docs.temporal.io/cli#install), and Docker (for local Ollama).
+
+```bash
+npm install
+
+./run.sh          # terminal 1 — Ollama + Temporal dev server + web service
+./run-worker.sh   # terminal 2 — the worker
+```
+
+Open the dashboard at **http://localhost:3000** and seed the demo with the **+ New Application** button, or from the CLI:
+
+```bash
+npx ts-node src/client.ts   # 11 loan workflows covering every failure scenario
+```
+
+First run pulls the `qwen2.5:1.5b` model (~1GB), so give it a few minutes. See [Running](#running) for details.
+
 ## Architecture
 
 ![Architecture](assets/architecture.png)
@@ -192,35 +211,17 @@ A Temporal-branded dashboard at `http://localhost:3000` with:
 
 Child `underwritingAgentWorkflow` executions are hidden from the dashboard list (`WorkflowType = 'homeLoanWorkflow'` is added to the visibility query), so the table shows only parent loan workflows.
 
-## Prerequisites
+## Running
+
+### Prerequisites
 
 - Node.js 18+
 - [Temporal CLI](https://docs.temporal.io/cli#install) (`temporal`) on your `PATH`
 - Docker (for local Ollama via `docker-compose.yml`), or a native Ollama install
 
-## Setup
+### Why two terminals
 
-```bash
-npm install
-```
-
-## Running
-
-Two terminals. The first script brings up the infrastructure and the UI; the second runs the worker so you can restart it independently while iterating on workflow/activity code.
-
-```bash
-# Terminal 1: Ollama + Temporal dev server + web service
-./run.sh
-
-# Terminal 2: the worker (handy to demo crash proofing workflows through ctrl+c)
-./run-worker.sh
-```
-
-Then open the dashboard at http://localhost:3000 and seed the demo workflows with the **+ New Application** button, or from the CLI:
-
-```bash
-npx ts-node src/client.ts   # starts 11 loan workflows covering every scenario below
-```
+`run.sh` brings up the infrastructure and the UI; `run-worker.sh` runs the worker separately so you can restart it independently while iterating on workflow/activity code — and so you can Ctrl-C it mid-run to demo crash-proof workflows resuming where they left off.
 
 ### What `run.sh` does
 
