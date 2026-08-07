@@ -1,6 +1,6 @@
 # Loan Origination Demo
 
-![Loan Origination Demo dashboard](assets/list-view.png)
+<video src="https://github.com/user-attachments/assets/59d8d575-04fb-45dd-8f01-400234eaca02" poster="assets/list-view.png" autoplay muted loop playsinline controls width="100%"></video>
 
 Demonstrates four complementary patterns on Temporal:
 
