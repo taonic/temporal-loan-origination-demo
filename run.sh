@@ -111,12 +111,6 @@ else
   wait_for_port 7233 "Temporal" 30
 fi
 
-echo "==> Starting worker"
-npm run worker >"$LOG_DIR/worker.log" 2>&1 &
-worker_pid=$!
-PIDS+=("$worker_pid")
-echo "    pid: $worker_pid"
-
 echo "==> Starting web service"
 npm run web >"$LOG_DIR/web.log" 2>&1 &
 web_pid=$!
@@ -131,6 +125,7 @@ echo "  Temporal UI:  http://localhost:8233"
 echo "  Ollama:       http://localhost:11434"
 echo "  Logs:         $LOG_DIR/"
 echo ""
+echo "To start the worker:       npm run worker"
 echo "To seed 10 demo workflows: npx ts-node src/client.ts"
 echo "Press Ctrl-C to stop everything."
 

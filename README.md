@@ -11,6 +11,12 @@ Demonstrates four complementary patterns on Temporal:
 
 Inspired by [temporal-training-exercise-typescript/solution7](https://github.com/temporal-sa/temporal-training-exercise-typescript/blob/main/solution7/src/workflow.ts) and the [saga pattern guide](https://taonic.github.io/temporal-design-patterns/saga-pattern.html).
 
+## Architecture
+
+![Architecture](assets/architecture.png)
+
+The Vue.js dashboard talks to an Express BFF ([src/web-service.ts](src/web-service.ts)), which holds the Temporal Client. It starts workflows, lists them via visibility queries, and reads live state through workflow queries and signals — no separate database. The Temporal Worker ([src/worker.ts](src/worker.ts)) hosts both the application workflow ([src/workflows.ts](src/workflows.ts)) and the agentic child workflow ([src/agent-workflow.ts](src/agent-workflow.ts)), plus their activity modules, on a single task queue.
+
 ## Recoverable pattern
 
 A `recoverableStep` helper wraps each activity:
@@ -138,7 +144,7 @@ Each forward activity validates its inputs and throws `ApplicationFailure.nonRet
 
 ## Failure Scenarios
 
-The client starts 10 workflows covering both recovery and saga cases:
+`src/client.ts` starts 11 workflows covering both recovery and saga cases:
 
 ### Single-issue (recovery)
 
@@ -188,8 +194,8 @@ Child `underwritingAgentWorkflow` executions are hidden from the dashboard list 
 
 ## Prerequisites
 
-- Temporal Server running locally on `localhost:7233`
 - Node.js 18+
+- [Temporal CLI](https://docs.temporal.io/cli#install) (`temporal`) on your `PATH`
 - Docker (for local Ollama via `docker-compose.yml`), or a native Ollama install
 
 ## Setup
@@ -198,41 +204,69 @@ Child `underwritingAgentWorkflow` executions are hidden from the dashboard list 
 npm install
 ```
 
-Start Ollama and pull the model (one-time, ~1GB for the default `qwen2.5:1.5b`):
+## Running
+
+Two terminals. The first script brings up the infrastructure and the UI; the second runs the worker so you can restart it independently while iterating on workflow/activity code.
 
 ```bash
-npm run llm
-# wait for the ollama-pull sidecar to finish; watch with:
-docker compose logs -f ollama-pull
+# Terminal 1: Ollama + Temporal dev server + web service
+./run.sh
+
+# Terminal 2: the worker (handy to demo crash proofing workflows through ctrl+c)
+./run-worker.sh
 ```
 
-Start the Temporal dev server with the custom search attributes provisioned in one command:
+Then open the dashboard at http://localhost:3000 and seed the demo workflows with the **+ New Application** button, or from the CLI:
 
 ```bash
-temporal server start-dev \
-  --search-attribute LoanStatus=Keyword \
-  --search-attribute FailedActivity=Keyword
+npx ts-node src/client.ts   # starts 11 loan workflows covering every scenario below
 ```
 
-If the dev server is already running, register them via the operator command instead:
+### What `run.sh` does
+
+1. If Temporal (`:7233`) or Ollama (`:11434`) is already running, it prompts to reuse the existing instance; otherwise it frees the port and starts a fresh one.
+2. Frees ports 3000 (web UI) and 3001 (iframe-friendly Temporal UI proxy).
+3. Starts Ollama via `docker compose up -d` — this also pulls the model on first run (~1GB for the default `qwen2.5:1.5b`), so the first start takes a few minutes.
+4. Starts `temporal server start-dev` **detached**, with the `LoanStatus` and `FailedActivity` keyword search attributes provisioned:
+
+   ```bash
+   temporal server start-dev \
+     --search-attribute LoanStatus=Keyword \
+     --search-attribute FailedActivity=Keyword
+   ```
+
+5. Starts the web service (`npm run web`) and waits for :3000.
+
+Ctrl-C stops the web service and, if `run.sh` started the Ollama container, tears it down too. The **Temporal dev server is deliberately left running** so workflow histories survive a restart of the app — stop it manually (`kill $(lsof -ti tcp:7233)`) when you want a clean slate.
+
+Logs from the backgrounded processes land in `logs/`: `ollama.log`, `temporal.log`, `web.log`.
+
+`run-worker.sh` is a thin wrapper: it checks that Temporal is up on :7233 and then execs `npm run worker` in the foreground, so worker logs stay on your terminal and Ctrl-C restarts just the worker (nodemon is not used here — restart the script after code changes, or use `npm run worker.watch`).
+
+### Endpoints
+
+| Service | URL |
+|---------|-----|
+| Dashboard | http://localhost:3000 |
+| Temporal UI | http://localhost:8233 |
+| Temporal UI proxy (iframe) | http://localhost:3001 |
+| Ollama | http://localhost:11434 |
+
+### Running the pieces manually
+
+If you'd rather not use the scripts:
+
+```bash
+npm run llm     # docker compose up — Ollama + one-shot model-pull sidecar
+npm run worker  # ts-node src/worker.ts
+npm run web     # nodemon src/web-service.ts
+```
+
+Plus the Temporal dev server with the search attributes as shown above. If a dev server is already running without them, register them via the operator command instead:
 
 ```bash
 temporal operator search-attribute create --name LoanStatus --type Keyword
 temporal operator search-attribute create --name FailedActivity --type Keyword
-```
-
-## Running
-
-```bash
-# Terminal 1: Start the worker
-npm start
-
-# Terminal 2: Start 10 loan workflows with different failure scenarios
-npm run workflow
-
-# Terminal 3: Start the UI
-npm run web
-# Open http://localhost:3000
 ```
 
 ## Fixing a Failed Workflow
@@ -309,4 +343,6 @@ public/
 ├── index.html             # Temporal-branded Vue.js 3 dashboard
 └── approve.html           # Per-workflow approval page with Approve / Reject actions
 docker-compose.yml         # Ollama + one-shot model-pull sidecar
+run.sh                     # Ollama + Temporal dev server + web service (logs to logs/)
+run-worker.sh              # worker in the foreground
 ```
